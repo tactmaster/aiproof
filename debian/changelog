@@ -1,0 +1,75 @@
+aiproof (0.1.5) unstable; urgency=medium
+
+  * Relicense from MIT to GPL-3.0-or-later: modified distributions must
+    publish their source under the same license.
+
+ -- Ed Watson <edmundwatson@gmail.com>  Wed, 23 Jul 2026 13:00:00 +0200
+
+aiproof (0.1.4) unstable; urgency=medium
+
+  * New eval suite (evals/): 17 realistic proofreading cases run through the
+    real pipeline with structural + content checks; `make eval`, supports
+    --model/--endpoint/--only for model comparison. mistral scores 15/17
+    (sub-second); gemma4 17/17 (but 7-50s/correction).
+  * Pipeline fixes found by the evals: strip same-line "(No changes
+    needed)"-style notes; full_clean() consolidates the cleanup chain in the
+    one correct order; per-line salvage restores dropped trailing colons;
+    new guard against appended content ("back in 20" -> "back in 20
+    minutes") and collapsed em-dash spacing, feeding the constrained retry.
+  * Prompt: anti-expansion rules (abbreviations, informal words) with a
+    worked example; no-notes rule.
+
+ -- Ed Watson <edmundwatson@gmail.com>  Wed, 23 Jul 2026 11:30:00 +0200
+
+aiproof (0.1.3) unstable; urgency=medium
+
+  * Deterministic formatting preservation: when whole-text correction and
+    the repair retry both mangle the layout, salvage line-by-line — each
+    line is proofread separately and reassembled on the original line grid
+    (blank lines, indentation, and bullet markers restored by construction;
+    capped at 40 lines).
+  * Diagnostic logging at every pipeline stage: captured-selection
+    fingerprint (chars/lines/blanks), which path produced the result
+    (ok / repaired / line-by-line / fallback), per-line failures.
+  * Notifications mention when line-by-line mode was used.
+
+ -- Ed Watson <edmundwatson@gmail.com>  Wed, 22 Jul 2026 12:30:00 +0200
+
+aiproof (0.1.2) unstable; urgency=medium
+
+  * Prompt: teach wrong-word/homophone fixes (our/owe, their/they're,
+    loose/lose) and capitalization ("i" -> "I") with counter-examples;
+    keep and extend the anti-rephrasing rules.
+  * Postprocess: recognize more wrapper boilerplate ("Here is the corrected
+    output/version/..."), reject wrapper-only responses instead of pasting
+    them, trim stray edge whitespace, and fix unwrap-quotes ordering so
+    multiline quoted responses unwrap reliably.
+  * Model evaluation across local Ollama models; mistral-openorca gives the
+    best minimal-correction behavior and is the recommended default.
+
+ -- Ed Watson <edmundwatson@gmail.com>  Fri, 17 Jul 2026 11:00:00 +0200
+
+aiproof (0.1.1) unstable; urgency=medium
+
+  * Strip trailing AI sign-off chatter ("Is there anything else I can help
+    you with?", "Hope this helps!", …) from model responses. Phrases that
+    are part of the user's own text are never removed.
+  * New: Files (Nautilus) right-click integration — Scripts → "Proofread
+    with AI" proofreads selected text files in place (backup kept as
+    *.orig). Installed per-user by 'aiproof setup'.
+
+ -- Ed Watson <edmundwatson@gmail.com>  Fri, 17 Jul 2026 10:05:00 +0200
+
+aiproof (0.1.0) unstable; urgency=medium
+
+  * Initial release: OS-wide AI proofreading for GNOME/Wayland.
+    - Global hotkeys (Ctrl+Super+P replace in place, Ctrl+Shift+Super+P
+      to clipboard) via GNOME custom keybindings.
+    - Clipboard orchestration with wl-clipboard, synthetic keystrokes
+      via ydotool/uinput, clipboard save & restore (text and images).
+    - Providers: Ollama (default), OpenAI-compatible, Anthropic, Gemini.
+    - Formatting-preservation guard with automatic repair retry.
+    - Tray icon (AppIndicator), notifications, GTK4/libadwaita settings,
+      Secret Service API-key storage, XDG autostart.
+
+ -- Ed Watson <edmundwatson@gmail.com>  Fri, 17 Jul 2026 09:50:00 +0200

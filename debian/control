@@ -1,0 +1,35 @@
+Source: aiproof
+Section: utils
+Priority: optional
+Maintainer: Ed Watson <edmundwatson@gmail.com>
+Build-Depends: debhelper-compat (= 13),
+ dh-python,
+ python3-all,
+ python3-setuptools,
+ pybuild-plugin-pyproject
+Standards-Version: 4.6.2
+Homepage: https://github.com/tactmaster/aiproof
+Rules-Requires-Root: no
+
+Package: aiproof
+Architecture: all
+Depends: ${python3:Depends},
+ ${misc:Depends},
+ python3-gi,
+ gir1.2-glib-2.0,
+ gir1.2-gtk-3.0,
+ gir1.2-gtk-4.0,
+ gir1.2-adw-1,
+ gir1.2-ayatanaappindicator3-0.1,
+ python3-requests,
+ python3-secretstorage,
+ wl-clipboard,
+ ydotool
+Recommends: gnome-shell-extension-appindicator
+Description: OS-wide AI text proofreader for GNOME/Wayland
+ Select text in any application, press a global hotkey, and have it
+ proofread by an LLM (local Ollama by default; OpenAI-compatible,
+ Anthropic and Google Gemini APIs supported) and replaced in place.
+ .
+ Ships a tray-icon daemon with GNOME global hotkeys, desktop
+ notifications, a GTK4/libadwaita settings app, and autostart on login.

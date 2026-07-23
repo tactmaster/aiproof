@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=AI Proofreader daemon
+Comment=Background service for OS-wide AI proofreading
+Exec=aiproof daemon
+Icon=io.github.edwatson.aiproof
+Terminal=false
+NoDisplay=true
+OnlyShowIn=GNOME;
+X-GNOME-Autostart-enabled=true
+X-GNOME-Autostart-Delay=3

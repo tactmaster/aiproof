@@ -1,0 +1,120 @@
+[
+  {
+    "id": "spelling-basic",
+    "category": "spelling",
+    "input": "Ths sentnce has severall speling erors in it.",
+    "must_contain": ["This sentence", "spelling errors"],
+    "must_not_contain": ["Ths", "sentnce", "severall"]
+  },
+  {
+    "id": "homophone-owe",
+    "category": "wrong-word",
+    "input": "Great thank very much i our you one",
+    "must_contain": ["I owe you one"],
+    "must_not_contain": ["our you"]
+  },
+  {
+    "id": "homophone-their-loose",
+    "category": "wrong-word",
+    "input": "i think their going to loose the game",
+    "must_contain": ["they're", "lose"],
+    "must_not_contain": ["their going", "loose"]
+  },
+  {
+    "id": "capitalization",
+    "category": "capitalization",
+    "input": "i saw the report. it looks good but i have questions.",
+    "must_contain": ["I saw", "It looks good", "I have"],
+    "must_not_contain": []
+  },
+  {
+    "id": "grammar-tense",
+    "category": "grammar",
+    "input": "I go to store yesterday and buy some milk.",
+    "must_contain": ["went", "bought"],
+    "must_not_contain": []
+  },
+  {
+    "id": "clean-simple",
+    "category": "must-not-touch",
+    "input": "This sentence is already perfectly fine.",
+    "unchanged": true
+  },
+  {
+    "id": "clean-informal",
+    "category": "must-not-touch",
+    "input": "gonna grab lunch, back in 20",
+    "must_contain_ci": ["gonna grab lunch, back in 20"],
+    "must_not_contain": ["minutes", "going to"]
+  },
+  {
+    "id": "clean-existing-semicolon",
+    "category": "must-not-touch",
+    "input": "We shipped it; the customers are happy.",
+    "unchanged": true
+  },
+  {
+    "id": "clean-existing-emdash",
+    "category": "must-not-touch",
+    "input": "The fix — merged yesterday — is already in prod.",
+    "unchanged": true
+  },
+  {
+    "id": "no-style-upgrade",
+    "category": "no-rephrasing",
+    "input": "The metting starts at 9am, we should get there early.",
+    "must_contain": ["meeting starts at 9am, we should get there early"],
+    "must_not_contain": ["9am;", "9am —"]
+  },
+  {
+    "id": "bullets-email",
+    "category": "formatting",
+    "input": "Deer team,\n\n• We fixt the bugg yesterdy\n• Deploymnt is schedled tomorow\n\nBest regads,\nEd",
+    "must_contain": ["Dear team", "fixed", "yesterday", "Deployment", "Best regards"],
+    "must_not_contain": ["Deer", "fixt", "regads"]
+  },
+  {
+    "id": "numbered-list",
+    "category": "formatting",
+    "input": "Steps:\n1. instal the package\n2. runn the daemon\n3. press the hotkey",
+    "must_contain": ["Steps:"],
+    "must_contain_ci": ["install the package", "run the daemon"],
+    "must_not_contain": ["instal the", "runn"]
+  },
+  {
+    "id": "technical-log-line",
+    "category": "verbatim-technical",
+    "input": "The service logged an ERROR at /usr/bin/example-delta-tool -B 67108864 -W 8388608 during teh delta step.",
+    "must_contain": ["/usr/bin/example-delta-tool", "-B 67108864", "-W 8388608", "the delta step"],
+    "must_not_contain": ["teh "]
+  },
+  {
+    "id": "url-and-version",
+    "category": "verbatim-technical",
+    "input": "Downlaod v0.1.3 from https://github.com/tactmaster/aiproof/releases tody.",
+    "must_contain": ["Download", "v0.1.3", "https://github.com/tactmaster/aiproof/releases", "today"],
+    "must_not_contain": ["Downlaod", "tody"]
+  },
+  {
+    "id": "signoff-is-users-text",
+    "category": "sign-off-bait",
+    "input": "Thanks for the reprot. Let me know if you need anything else.",
+    "must_contain": ["report", "Let me know if you need anything else."],
+    "must_not_contain": ["reprot"]
+  },
+  {
+    "id": "quote-wrapped-input",
+    "category": "formatting",
+    "input": "\"pleese review the attached document\"",
+    "must_contain_ci": ["please review the attached document"],
+    "must_not_contain": ["pleese"]
+  },
+  {
+    "id": "support-email",
+    "category": "real-world",
+    "input": "Hello,\n\nWe are working to improce the logging of delta generation.\n\nHowever we got this error out of the system\n\n2026/07/21 01:47:36 running: /usr/bin/example-delta-tool [-o /work/job1234/out.img -D  -0 -B 67108864 -W 8388608 -P 262144 -I 32768 /work/job1234/a /work/job1234/b -- -- -0 -B 67108864 -W 8388608 -P 262144 -I 32768]\n\nIf you can try the delta with those paramaters, and it failed. Then we have a lead. \nThen to fix the problem we can set the parmater you use in the system to fix the generation if that make sence",
+    "must_contain": ["improve", "parameters", "/usr/bin/example-delta-tool"],
+    "must_not_contain": ["improce", "paramaters"],
+    "bonus_contain": ["parameter you use", "makes sense"]
+  }
+]

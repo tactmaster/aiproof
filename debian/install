@@ -1,0 +1,3 @@
+data/io.github.edwatson.aiproof.desktop usr/share/applications
+data/io.github.edwatson.aiproof-daemon.desktop etc/xdg/autostart
+data/icons/io.github.edwatson.aiproof.svg usr/share/icons/hicolor/scalable/apps

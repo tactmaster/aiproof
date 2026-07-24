@@ -1,6 +1,6 @@
 """aiproof — OS-wide AI text proofreader for GNOME/Wayland."""
 
-__version__ = "0.1.5"
+__version__ = "0.1.6"
 
 APP_ID = "io.github.edwatson.aiproof"
 DBUS_NAME = APP_ID

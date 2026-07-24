@@ -107,7 +107,23 @@ class Orchestrator:
             return f"Unexpected error: {e}"
 
     def _path_note(self) -> str:
-        return " — line-by-line mode" if self.last_path == "line-by-line" else ""
+        if self.last_path in ("line-by-line", "segments"):
+            return f" — {self.last_path} mode"
+        return ""
+
+    def _report_unchanged(self, elapsed: float) -> bool:
+        """Distinguish 'genuinely clean' from 'every correction was rejected
+        by the safety guards' — reporting the latter as clean hides real
+        errors from the user."""
+        if self.last_path == "fallback":
+            return self._fail(
+                "Couldn't apply corrections safely",
+                "The model kept restyling the text instead of minimally "
+                "fixing it, so your original was left untouched. Try "
+                "selecting a smaller piece, or a different model.",
+            )
+        return self._done("No changes needed",
+                          f"Checked in {elapsed:.1f}s — text is clean.")
 
     def _paste_flow_locked(self) -> bool:
         saved = clipboard.save()
@@ -143,8 +159,7 @@ class Orchestrator:
 
             if corrected == text:
                 clipboard.restore(saved)
-                return self._done("No changes needed",
-                                  f"Checked in {elapsed:.1f}s — text is clean.")
+                return self._report_unchanged(elapsed)
 
             clipboard.set_text(corrected)
             time.sleep(0.1)
@@ -179,8 +194,7 @@ class Orchestrator:
             corrected, elapsed = result
 
             if corrected == text:
-                return self._done("No changes needed",
-                                  f"Checked in {elapsed:.1f}s — text is clean.")
+                return self._report_unchanged(elapsed)
 
             clipboard.set_text(corrected)
             note = "Corrected text copied — press Ctrl+V to paste " \

@@ -14,6 +14,7 @@ from .postprocess import (
     full_clean,
     looks_like_wrapper_only,
     proofread_line_by_line,
+    proofread_segments,
 )
 
 # Don't burn one model call per line on huge selections.
@@ -52,7 +53,7 @@ class LLMClient:
         self.timeout = cfg.get("request_timeout_s", 60)
         self.max_chars = cfg.get("max_chars", 10000)
         # Which pipeline path produced the last proofread() result:
-        # "ok" | "repaired" | "line-by-line" | "fallback"
+        # "ok" | "repaired" | "line-by-line" | "segments" | "fallback"
         self.last_path = ""
 
     # -- public API ---------------------------------------------------------
@@ -81,6 +82,14 @@ class LLMClient:
             salvaged = proofread_line_by_line(text, self._correct_line)
             if salvaged != text:
                 final, path = salvaged, "line-by-line"
+        elif path == "fallback" and line_count == 1:
+            log.info(
+                "whole-text correction kept getting rejected; "
+                "salvaging sentence segments"
+            )
+            salvaged = proofread_segments(text, self._correct_line)
+            if salvaged != text:
+                final, path = salvaged, "segments"
         self.last_path = path
         log.info(
             "proofread done: path=%s, %d chars, %d lines, %.1fs",

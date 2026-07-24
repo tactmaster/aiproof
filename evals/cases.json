@@ -110,6 +110,14 @@
     "must_not_contain": ["pleese"]
   },
   {
+    "id": "glued-chat-messages",
+    "category": "real-world",
+    "input": "The default is 60 minutesYes here https://docs.example.com/config/options#timeoutsecondsYes it is, then you also program in rollback is it fails, the deal with the that youyr external process may fail",
+    "must_contain": ["https://docs.example.com/config/options#timeoutseconds"],
+    "must_not_contain": ["<https", "rollback?"],
+    "bonus_contain": ["rollback if it fails", "your external process"]
+  },
+  {
     "id": "support-email",
     "category": "real-world",
     "input": "Hello,\n\nWe are working to improce the logging of delta generation.\n\nHowever we got this error out of the system\n\n2026/07/21 01:47:36 running: /usr/bin/example-delta-tool [-o /work/job1234/out.img -D  -0 -B 67108864 -W 8388608 -P 262144 -I 32768 /work/job1234/a /work/job1234/b -- -- -0 -B 67108864 -W 8388608 -P 262144 -I 32768]\n\nIf you can try the delta with those paramaters, and it failed. Then we have a lead. \nThen to fix the problem we can set the parmater you use in the system to fix the generation if that make sence",

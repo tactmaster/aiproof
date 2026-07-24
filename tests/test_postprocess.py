@@ -9,6 +9,7 @@ from aiproof.llm.postprocess import (
     looks_like_wrapper_only,
     normalize_edges,
     proofread_line_by_line,
+    proofread_segments,
     strip_trailing_explanation,
     strip_trailing_signoff,
     unwrap_quotes,
@@ -596,3 +597,93 @@ class TestValidateNoAppendedContent:
             "The fix—merged—is fine.", "The fix—merged—is fine."
         )
         assert valid
+
+
+class TestAngleBracketGuard:
+    def test_url_bracket_wrap_flagged(self):
+        valid, issues = validate_added_punctuation(
+            "see https://example.com here",
+            "see <https://example.com> here",
+        )
+        assert not valid and any("Angle brackets" in i for i in issues)
+
+    def test_existing_brackets_fine(self):
+        valid, _ = validate_added_punctuation("a < b > c", "a < b > c")
+        assert valid
+
+
+class TestProofreadSegments:
+    def test_partial_salvage_keeps_rejected_segment(self):
+        original = "bad segmnt one, rollback is it fails, youyr process may fail"
+
+        def correct_fn(seg):
+            fixes = {
+                "bad segmnt one": None,  # model failed on this one
+                "rollback is it fails": "rollback if it fails",
+                "youyr process may fail": "your process may fail",
+            }
+            return fixes[seg]
+
+        assert proofread_segments(original, correct_fn) == (
+            "bad segmnt one, rollback if it fails, your process may fail"
+        )
+
+    def test_separators_preserved_verbatim(self):
+        original = "one. two; three: four"
+        result = proofread_segments(original, lambda s: s.replace("o", "0"))
+        assert result == "0ne. tw0; three: f0ur"
+
+    def test_fragment_capitalization_reverted(self):
+        original = "then we deploy"
+        assert proofread_segments(original, lambda s: "Then we deploy") == (
+            "then we deploy"
+        )
+
+    def test_added_trailing_period_stripped(self):
+        original = "then we deploy"
+        assert proofread_segments(original, lambda s: "then we deploy.") == (
+            "then we deploy"
+        )
+
+    def test_segment_restyling_rejected(self):
+        original = "see https://example.com for info, more text here"
+
+        def correct_fn(seg):
+            if "https" in seg:
+                return "see <https://example.com> for info"  # bracket wrap
+            return "more text here"
+
+        assert proofread_segments(original, correct_fn) == original
+
+
+class TestQuestionExclamationGuard:
+    def test_added_question_marks_flagged(self):
+        valid, issues = validate_added_punctuation(
+            "rollback is it fails", "rollback? Is it failing?"
+        )
+        assert not valid and any("Question" in i for i in issues)
+
+    def test_existing_question_fine(self):
+        valid, _ = validate_added_punctuation("is it done?", "Is it done?")
+        assert valid
+
+    def test_added_exclamation_flagged(self):
+        valid, issues = validate_added_punctuation("great work", "Great work!")
+        assert not valid
+
+
+class TestUnwrapUrlBrackets:
+    def test_autolink_unwrapped(self):
+        from aiproof.llm.postprocess import unwrap_url_brackets
+        assert unwrap_url_brackets(
+            "see <https://example.com/x#y> today", "see https://example.com/x#y tody"
+        ) == "see https://example.com/x#y today"
+
+    def test_users_own_brackets_kept(self):
+        from aiproof.llm.postprocess import unwrap_url_brackets
+        original = "docs at <https://example.com>"
+        assert unwrap_url_brackets(original, original) == original
+
+    def test_non_url_brackets_untouched(self):
+        from aiproof.llm.postprocess import unwrap_url_brackets
+        assert unwrap_url_brackets("a <b> c", "a b c") == "a <b> c"

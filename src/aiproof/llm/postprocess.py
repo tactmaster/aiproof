@@ -175,6 +175,21 @@ def strip_trailing_parenthetical(text: str, original: str) -> str:
         result = result[: m.start()].rstrip()
 
 
+_BRACKETED_URL_RE = re.compile(r"<(https?://[^>\s]+)>")
+
+
+def unwrap_url_brackets(text: str, original: str) -> str:
+    """Models love turning bare URLs into markdown autolinks (<https://…>).
+    Unwrap them mechanically — unless the user's own text had that exact
+    bracketed form."""
+    def repl(m):
+        if m.group(0) in (original or ""):
+            return m.group(0)
+        return m.group(1)
+
+    return _BRACKETED_URL_RE.sub(repl, text)
+
+
 def full_clean(response: str, original: str) -> str:
     """The complete response-cleanup chain, in the one order that works:
     wrapper phrases / fences / think-blocks, extra explanation paragraphs,
@@ -187,6 +202,7 @@ def full_clean(response: str, original: str) -> str:
     cleaned = normalize_edges(cleaned, original)
     cleaned = strip_trailing_parenthetical(cleaned, original)
     cleaned = strip_trailing_signoff(unwrap_quotes(cleaned, original), original)
+    cleaned = unwrap_url_brackets(cleaned, original)
     return normalize_edges(cleaned, original)
 
 
@@ -279,6 +295,15 @@ def validate_added_punctuation(original: str, corrected: str) -> tuple[bool, lis
         issues.append(
             f"Colons added: {orig.count(':')} -> {corr.count(':')}"
         )
+    # Models like wrapping URLs in <angle brackets> (markdown autolinks).
+    if corr.count("<") > orig.count("<") or corr.count(">") > orig.count(">"):
+        issues.append("Angle brackets added")
+    # Turning statements into questions/exclamations is restyling, not
+    # proofreading ("rollback is it fails" -> "rollback? Is it failing?").
+    if corr.count("?") > orig.count("?"):
+        issues.append("Question marks added")
+    if corr.count("!") > orig.count("!"):
+        issues.append("Exclamation marks added")
 
     return (len(issues) == 0, issues)
 
@@ -396,6 +421,41 @@ def enforce_formatting_preservation_ex(
     except Exception:
         log.warning("Formatting repair failed", exc_info=True)
         return original, "fallback"
+
+
+_SEGMENT_SPLIT_RE = re.compile(r"([.!?,;:][ \t]+)")
+
+
+def proofread_segments(original: str, correct_fn) -> str:
+    """Salvage for SINGLE-LINE text when whole-text correction keeps getting
+    rejected: split on sentence/clause boundaries, correct each segment
+    independently (same guards as line-by-line), and rejoin with the exact
+    original separators. A rejected segment keeps its original text, so a
+    restyling-happy model can still deliver the fixes it gets right."""
+    parts = _SEGMENT_SPLIT_RE.split(original)
+    out = []
+    for i, part in enumerate(parts):
+        if i % 2 == 1 or not part.strip():
+            out.append(part)  # separator (or whitespace) — verbatim
+            continue
+        corrected = correct_fn(part)
+        if (
+            not corrected
+            or "\n" in corrected
+            or not corrected.strip()
+            or not validate_added_punctuation(part, corrected)[0]
+            or not validate_no_appended_content(part, corrected)[0]
+        ):
+            out.append(part)
+            continue
+        # Mid-sentence fragments: don't let the model capitalize the start
+        # or bolt a period onto a clause that had none.
+        if part[0].islower() and corrected[:1].isupper():
+            corrected = corrected[:1].lower() + corrected[1:]
+        if corrected[-1:] in ".,;" and part[-1:] not in ".,;":
+            corrected = corrected.rstrip(".,;")
+        out.append(corrected)
+    return "".join(out)
 
 
 _LINE_PREFIX_RE = re.compile(r"^[ \t]*(?:(?:[•\-*]|\d+[.)])[ \t]+)?")

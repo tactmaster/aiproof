@@ -83,9 +83,16 @@ def _cmd_proofread() -> int:
     if stripped_trailing:
         sys.stdout.write("\n")
     print(
-        f"[{client.cfg['provider']}/{client.model} in {elapsed:.1f}s]",
+        f"[{client.cfg['provider']}/{client.model} in {elapsed:.1f}s, "
+        f"path={client.last_path}]",
         file=sys.stderr,
     )
+    if client.last_path == "fallback":
+        print(
+            "aiproof: WARNING — every correction was rejected by the safety "
+            "guards; output is your original text, NOT verified clean.",
+            file=sys.stderr,
+        )
     return 0
 
 

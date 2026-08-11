@@ -1,3 +1,14 @@
+aiproof (0.1.7) unstable; urgency=medium
+
+  * Fallback provider: optional second provider/endpoint/model tried
+    automatically when the primary is unreachable or fails (e.g. local
+    Ollama for when the remote GPU box is away). Configurable in the
+    settings window; notifications and CLI say when the fallback was used.
+  * 5s connect timeout so an unreachable host fails over in seconds
+    instead of hanging for the full request timeout.
+
+ -- Ed Watson <edmundwatson@gmail.com>  Mon, 11 Aug 2026 15:25:00 +0200
+
 aiproof (0.1.6) unstable; urgency=medium
 
   * Honest reporting: when every correction is rejected by the safety

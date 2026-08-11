@@ -223,12 +223,14 @@ class LLMClient:
     # -- per-format execution ------------------------------------------------
 
     def _post(self, req: dict) -> requests.Response:
+        # Short connect timeout so an unreachable host fails over to the
+        # fallback provider in seconds, not after the full read timeout.
         return requests.post(
             req["url"],
             json=req["body"],
             headers=req["headers"],
             params=req.get("params"),
-            timeout=self.timeout,
+            timeout=(5, self.timeout),
         )
 
     def _query_ollama(self, prompt: str) -> str:
@@ -299,6 +301,38 @@ class LLMClient:
         if hint:
             msg += f" ({hint})"
         raise LLMError(msg)
+
+
+def proofread_with_fallback(cfg: dict, text: str, on_fallback=None,
+                            _client_factory=None):
+    """Proofread with the configured provider; if it fails for any reason
+    other than the text being too long, retry once with the configured
+    fallback provider.
+
+    Returns (corrected, elapsed_seconds, client, used_fallback). on_fallback,
+    if given, is called with the primary's error before the retry."""
+    factory = _client_factory or client_from_config
+    client = factory(cfg)
+    try:
+        corrected, elapsed = client.proofread(text)
+        return corrected, elapsed, client, False
+    except TextTooLongError:
+        raise
+    except LLMError as primary_error:
+        fallback = cfg.get("fallback") or {}
+        if not (fallback.get("endpoint") or fallback.get("provider")):
+            raise
+        log.warning("primary provider failed (%s); trying fallback %s",
+                    primary_error, fallback)
+        if on_fallback:
+            on_fallback(primary_error)
+        fb_cfg = dict(cfg)
+        for key in ("provider", "endpoint", "model"):
+            if fallback.get(key):
+                fb_cfg[key] = fallback[key]
+        fb_client = factory(fb_cfg)
+        corrected, elapsed = fb_client.proofread(text)
+        return corrected, elapsed, fb_client, True
 
 
 def client_from_config(cfg: dict) -> LLMClient:

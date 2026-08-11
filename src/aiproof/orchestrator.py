@@ -8,7 +8,7 @@ import threading
 import time
 
 from . import clipboard, keystroke
-from .llm.client import LLMError, client_from_config
+from .llm.client import LLMError, proofread_with_fallback
 from .notify import Notifier
 
 log = logging.getLogger(__name__)
@@ -85,8 +85,8 @@ class Orchestrator:
 
     def _proofread(self, text: str):
         """Returns (corrected, elapsed) or an error string."""
-        client = client_from_config(self.cfg)
         self.last_path = ""
+        self.used_fallback = False
         log.info(
             "captured selection: %d chars, %d lines, %d blank lines",
             len(text), text.count("\n") + 1,
@@ -94,12 +94,26 @@ class Orchestrator:
         )
         self.notifier.notify(
             "Proofreading…",
-            f"{len(text):,} characters with {client.cfg['provider']}/{client.model}",
+            f"{len(text):,} characters with "
+            f"{self.cfg['provider']}/{self.cfg['model']}",
         )
+
+        def on_fallback(error):
+            fb = self.cfg.get("fallback") or {}
+            self.notifier.notify(
+                "Primary provider unavailable — trying fallback…",
+                f"{error}\nFalling back to "
+                f"{fb.get('provider', self.cfg['provider'])}/"
+                f"{fb.get('model', '?')}",
+            )
+
         try:
-            result = client.proofread(text)
+            corrected, elapsed, client, used_fb = proofread_with_fallback(
+                self.cfg, text, on_fallback=on_fallback
+            )
             self.last_path = client.last_path
-            return result
+            self.used_fallback = used_fb
+            return corrected, elapsed
         except LLMError as e:
             return str(e)
         except Exception as e:
@@ -107,9 +121,13 @@ class Orchestrator:
             return f"Unexpected error: {e}"
 
     def _path_note(self) -> str:
+        note = ""
         if self.last_path in ("line-by-line", "segments"):
-            return f" — {self.last_path} mode"
-        return ""
+            note += f" — {self.last_path} mode"
+        if getattr(self, "used_fallback", False):
+            fb = self.cfg.get("fallback") or {}
+            note += f" — via fallback {fb.get('model', '')}".rstrip()
+        return note
 
     def _report_unchanged(self, elapsed: float) -> bool:
         """Distinguish 'genuinely clean' from 'every correction was rejected

@@ -26,6 +26,10 @@ DEFAULTS = {
     # Per-provider {"model": ..., "endpoint": ...}, so the Settings window can
     # restore what you had before when you switch providers and back.
     "provider_overrides": {},
+    # Optional {"provider": ..., "endpoint": ..., "model": ...} tried when the
+    # primary provider is unreachable or fails (e.g. local Ollama for when
+    # the remote GPU box is off the network). None disables failover.
+    "fallback": None,
 }
 
 

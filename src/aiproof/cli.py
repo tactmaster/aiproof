@@ -62,7 +62,7 @@ def main(argv=None) -> int:
 
 def _cmd_proofread() -> int:
     from . import config
-    from .llm.client import LLMError, client_from_config
+    from .llm.client import LLMError, proofread_with_fallback
 
     text = sys.stdin.read()
     if not text.strip():
@@ -73,9 +73,14 @@ def _cmd_proofread() -> int:
     if stripped_trailing:
         text = text[:-1]
 
-    client = client_from_config(config.load())
+    def on_fallback(error):
+        print(f"aiproof: primary provider failed ({error}); "
+              "trying fallback…", file=sys.stderr)
+
     try:
-        corrected, elapsed = client.proofread(text)
+        corrected, elapsed, client, used_fb = proofread_with_fallback(
+            config.load(), text, on_fallback=on_fallback
+        )
     except LLMError as e:
         print(f"aiproof: {e}", file=sys.stderr)
         return 1

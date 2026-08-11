@@ -81,6 +81,33 @@ class SettingsWindow(Adw.PreferencesWindow):
 
         page.add(group)
 
+        fb_group = Adw.PreferencesGroup(
+            title="Fallback provider",
+            description="Used automatically when the provider above is "
+                        "unreachable or fails",
+        )
+        self.fb_enabled_row = Adw.SwitchRow(title="Enable fallback")
+        self.fb_enabled_row.connect("notify::active", self._save_fallback)
+        fb_group.add(self.fb_enabled_row)
+
+        self.fb_provider_row = Adw.ComboRow(
+            title="Fallback provider",
+            model=Gtk.StringList.new(
+                [PROVIDERS[pid]["display_name"] for pid in PROVIDER_IDS]
+            ),
+        )
+        self.fb_provider_row.connect("notify::selected", self._save_fallback)
+        fb_group.add(self.fb_provider_row)
+
+        self.fb_endpoint_row = Adw.EntryRow(title="Fallback endpoint URL")
+        self.fb_endpoint_row.connect("changed", self._save_fallback)
+        fb_group.add(self.fb_endpoint_row)
+
+        self.fb_model_row = Adw.EntryRow(title="Fallback model")
+        self.fb_model_row.connect("changed", self._save_fallback)
+        fb_group.add(self.fb_model_row)
+        page.add(fb_group)
+
         test_group = Adw.PreferencesGroup()
         self.test_row = Adw.ActionRow(
             title="Test connection", subtitle="Sends a tiny prompt to the model"
@@ -145,6 +172,21 @@ class SettingsWindow(Adw.PreferencesWindow):
         else:
             config.update(api_key_plaintext=key or None)
             self._flash(row, "Keyring unavailable — saved as plain text")
+
+    def _save_fallback(self, *_args) -> None:
+        if self._loading:
+            return
+        if not self.fb_enabled_row.get_active():
+            config.update(fallback=None)
+            return
+        pid = PROVIDER_IDS[self.fb_provider_row.get_selected()]
+        config.update(fallback={
+            "provider": pid,
+            "endpoint": self.fb_endpoint_row.get_text().strip()
+            or PROVIDERS[pid]["endpoint"],
+            "model": self.fb_model_row.get_text().strip()
+            or PROVIDERS[pid]["model"],
+        })
 
     def _on_list_menu_toggled(self, button, _pspec) -> None:
         if button.get_active():
@@ -346,6 +388,16 @@ class SettingsWindow(Adw.PreferencesWindow):
         )
         self.delay_row.set_value(cfg.get("restore_delay_ms", 500))
         self.autostart_row.set_active(bool(cfg.get("autostart", True)))
+
+        fallback = cfg.get("fallback") or {}
+        self.fb_enabled_row.set_active(bool(fallback))
+        try:
+            fb_idx = PROVIDER_IDS.index(fallback.get("provider", "ollama"))
+        except ValueError:
+            fb_idx = 0
+        self.fb_provider_row.set_selected(fb_idx)
+        self.fb_endpoint_row.set_text(fallback.get("endpoint", ""))
+        self.fb_model_row.set_text(fallback.get("model", ""))
 
     def _flash(self, row, text: str) -> None:
         toast = Adw.Toast(title=text, timeout=3)

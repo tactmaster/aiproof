@@ -4,6 +4,8 @@ import argparse
 import logging
 import sys
 
+log = logging.getLogger(__name__)
+
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(
@@ -66,12 +68,15 @@ def _cmd_proofread() -> int:
 
     text = sys.stdin.read()
     if not text.strip():
+        log.info("no input on stdin")
         print("aiproof: no input on stdin", file=sys.stderr)
         return 1
     # stdin usually ends with a newline that isn't part of the "selection"
     stripped_trailing = text.endswith("\n") and not text.endswith("\n\n")
     if stripped_trailing:
         text = text[:-1]
+    log.debug("proofread: %d chars from stdin (stripped trailing newline=%s)",
+              len(text), stripped_trailing)
 
     def on_fallback(error):
         print(f"aiproof: primary provider failed ({error}); "
@@ -82,17 +87,22 @@ def _cmd_proofread() -> int:
             config.load(), text, on_fallback=on_fallback
         )
     except LLMError as e:
+        log.warning("proofread failed: %s", e)
         print(f"aiproof: {e}", file=sys.stderr)
         return 1
     sys.stdout.write(corrected)
     if stripped_trailing:
         sys.stdout.write("\n")
+    log.debug("proofread done: path=%s, used_fallback=%s",
+              client.last_path, used_fb)
     print(
         f"[{client.cfg['provider']}/{client.model} in {elapsed:.1f}s, "
         f"path={client.last_path}]",
         file=sys.stderr,
     )
     if client.last_path == "fallback":
+        log.warning("every correction was rejected by the guards; "
+                    "output is the unverified original")
         print(
             "aiproof: WARNING — every correction was rejected by the safety "
             "guards; output is your original text, NOT verified clean.",
@@ -109,6 +119,8 @@ def _cmd_trigger(method: str, oneshot: bool, clipboard_only: bool) -> int:
 
         orch = Orchestrator(config.load(), Notifier())
         ok = orch.run_clipboard_flow() if clipboard_only else orch.run_paste_flow()
+        log.debug("oneshot %s flow -> %s",
+                  "clipboard" if clipboard_only else "paste", ok)
         return 0 if ok else 1
 
     import gi  # noqa: F401
@@ -122,8 +134,10 @@ def _cmd_trigger(method: str, oneshot: bool, clipboard_only: bool) -> int:
             DBUS_NAME, DBUS_PATH, DBUS_IFACE, method,
             None, None, Gio.DBusCallFlags.NONE, 5000, None,
         )
+        log.debug("DBus %s dispatched to the daemon", method)
         return 0
     except GLib.Error as e:
+        log.warning("daemon unreachable over DBus: %s", e.message)
         print(
             f"aiproof: could not reach the daemon ({e.message}).\n"
             "Is it running? Start it with: aiproof daemon",

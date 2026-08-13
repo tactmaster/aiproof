@@ -28,19 +28,26 @@ def socket_path() -> str:
 
 
 def available() -> bool:
-    return shutil.which("ydotool") is not None and os.path.exists(socket_path())
+    socket = socket_path()
+    ok = shutil.which("ydotool") is not None and os.path.exists(socket)
+    if not ok:
+        log.debug("ydotool unavailable (binary found=%s, socket %s exists=%s)",
+                  shutil.which("ydotool") is not None, socket,
+                  os.path.exists(socket))
+    return ok
 
 
 def _key(*events: str) -> None:
     env = dict(os.environ, YDOTOOL_SOCKET=socket_path())
+    log.debug("ydotool key %s", " ".join(events))
     proc = subprocess.run(
         ["ydotool", "key", *events],
         env=env, capture_output=True, timeout=3,
     )
     if proc.returncode != 0:
-        raise RuntimeError(
-            f"ydotool failed: {proc.stderr.decode('utf-8', 'replace').strip()}"
-        )
+        stderr = proc.stderr.decode("utf-8", "replace").strip()
+        log.warning("ydotool key injection failed: %s", stderr)
+        raise RuntimeError(f"ydotool failed: {stderr}")
 
 
 def release_modifiers() -> None:

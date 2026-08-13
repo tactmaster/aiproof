@@ -9,6 +9,8 @@ from typing import Callable, Optional
 
 import requests
 
+# Re-exported for existing importers (orchestrator, cli, tests, evals).
+from .errors import LLMError, TextTooLongError  # noqa: F401
 from .postprocess import (
     enforce_formatting_preservation_ex,
     full_clean,
@@ -26,17 +28,6 @@ log = logging.getLogger(__name__)
 
 MAX_OUTPUT_TOKENS = 2000
 TEMPERATURE = 0.1
-
-
-class LLMError(Exception):
-    """User-presentable LLM failure."""
-
-
-class TextTooLongError(LLMError):
-    def __init__(self, length: int, limit: int):
-        super().__init__(f"Selection too long ({length:,} > {limit:,} characters)")
-        self.length = length
-        self.limit = limit
 
 
 class LLMClient:
@@ -61,13 +52,17 @@ class LLMClient:
     def proofread(self, text: str) -> tuple[str, float]:
         """Return (corrected_text, elapsed_seconds)."""
         if len(text) > self.max_chars:
+            log.info("selection too long: %d > %d characters",
+                     len(text), self.max_chars)
             raise TextTooLongError(len(text), self.max_chars)
         start = time.monotonic()
         response = self.query(build_proofread_prompt(text))
         cleaned = full_clean(response, text)
         if not cleaned:
+            log.warning("model returned an empty response")
             raise LLMError("Model returned an empty response")
         if looks_like_wrapper_only(cleaned, text):
+            log.warning("model returned only boilerplate: %r", cleaned[:60])
             raise LLMError(
                 "Model returned only boilerplate, no corrected text "
                 f"({cleaned[:60]!r})"
@@ -82,6 +77,9 @@ class LLMClient:
             salvaged = proofread_line_by_line(text, self._correct_line)
             if salvaged != text:
                 final, path = salvaged, "line-by-line"
+            else:
+                log.info("line-by-line salvage made no changes; "
+                         "keeping original (path=fallback)")
         elif path == "fallback" and line_count == 1:
             log.info(
                 "whole-text correction kept getting rejected; "
@@ -90,6 +88,14 @@ class LLMClient:
             salvaged = proofread_segments(text, self._correct_line)
             if salvaged != text:
                 final, path = salvaged, "segments"
+            else:
+                log.info("segment salvage made no changes; "
+                         "keeping original (path=fallback)")
+        elif path == "fallback":
+            log.info(
+                "layout kept breaking but %d lines exceeds the %d-line "
+                "salvage limit; returning original", line_count, MAX_SALVAGE_LINES,
+            )
         self.last_path = path
         log.info(
             "proofread done: path=%s, %d chars, %d lines, %.1fs",
@@ -107,16 +113,22 @@ class LLMClient:
             return None
         cleaned = full_clean(response, line)
         if not cleaned or looks_like_wrapper_only(cleaned, line):
+            log.debug("line correction rejected (empty or boilerplate); "
+                      "keeping original line")
             return None
         return cleaned
 
     def query(self, prompt: str) -> str:
         try:
             return self._dispatch(prompt)
-        except requests.Timeout:
-            raise LLMError(f"Request timed out after {self.timeout}s") from None
         except requests.ConnectionError as e:
+            # Caught first: ConnectTimeout subclasses both ConnectionError and
+            # Timeout, and a dead host is "unreachable", not "slow".
+            log.debug("cannot reach %s (%s)", self.endpoint, type(e).__name__)
             raise LLMError(f"Cannot reach {self.endpoint}: connection failed") from e
+        except requests.Timeout:
+            log.debug("read timed out after %ss", self.timeout)
+            raise LLMError(f"Request timed out after {self.timeout}s") from None
 
     def test_connection(self) -> tuple[bool, str]:
         old_timeout = self.timeout
@@ -317,10 +329,13 @@ def proofread_with_fallback(cfg: dict, text: str, on_fallback=None,
         corrected, elapsed = client.proofread(text)
         return corrected, elapsed, client, False
     except TextTooLongError:
+        # The fallback cfg inherits max_chars, so retrying cannot help.
+        log.info("selection too long; not trying the fallback provider")
         raise
     except LLMError as primary_error:
         fallback = cfg.get("fallback") or {}
         if not (fallback.get("endpoint") or fallback.get("provider")):
+            log.info("no usable fallback configured (%r); giving up", fallback or None)
             raise
         log.warning("primary provider failed (%s); trying fallback %s",
                     primary_error, fallback)
@@ -331,7 +346,11 @@ def proofread_with_fallback(cfg: dict, text: str, on_fallback=None,
             if fallback.get(key):
                 fb_cfg[key] = fallback[key]
         fb_client = factory(fb_cfg)
-        corrected, elapsed = fb_client.proofread(text)
+        try:
+            corrected, elapsed = fb_client.proofread(text)
+        except LLMError as fb_error:
+            log.warning("fallback provider also failed: %s", fb_error)
+            raise
         return corrected, elapsed, fb_client, True
 
 

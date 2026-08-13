@@ -1,9 +1,15 @@
 PYTHON ?= /usr/bin/python3
 
-.PHONY: test eval deb install-user uninstall-user run-daemon clean
+.PHONY: test test-flow eval deb install-user uninstall-user run-daemon clean
 
 test:
 	PYTHONPATH=src $(PYTHON) -m pytest tests/ -q
+
+# Route-by-route flow tests, verbose with live logs; also writes the
+# per-route log report to build/flow-report.md.
+test-flow:
+	PYTHONPATH=src $(PYTHON) -m pytest tests/ -m flow -v --log-level=DEBUG
+	@echo "Route report: build/flow-report.md"
 
 # Live prompt/pipeline evaluation against the configured model+endpoint.
 # Args: make eval EVAL_ARGS="--model llama3:latest --show-output"

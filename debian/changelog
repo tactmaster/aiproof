@@ -1,3 +1,22 @@
+aiproof (0.1.8) unstable; urgency=medium
+
+  * Flow hardening: clipboard snapshot failures now notify instead of
+    crashing the run; whitespace-only selections are rejected before the
+    model (both flows); a network failure during the format-repair call
+    now triggers provider failover instead of reporting "Couldn't apply
+    corrections safely"; connect timeouts report the host as unreachable;
+    the "ydotool not set up" note no longer appears when clipboard-only
+    mode was chosen deliberately; "No changes needed" says when the
+    fallback provider served the check.
+  * Every flow branch now logs its decision (orchestrator gates, retries,
+    guard rejections, salvage skips, fallback failures, CLI outcomes).
+  * 81 fully mocked flow tests covering every route (orchestrator, LLM
+    pipeline, provider failover, CLI, DBus dispatch); make test-flow
+    writes a route-by-route log report to build/flow-report.md.
+  * docs/flow.md: mermaid flow charts (simple + detailed) of every route.
+
+ -- Ed Watson <edmundwatson@gmail.com>  Wed, 12 Aug 2026 09:00:00 +0200
+
 aiproof (0.1.7) unstable; urgency=medium
 
   * Fallback provider: optional second provider/endpoint/model tried

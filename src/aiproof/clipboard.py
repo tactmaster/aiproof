@@ -111,8 +111,10 @@ def get_text() -> str | None:
     try:
         proc = _run(["wl-paste", "--no-newline", "--type", "text"])
     except subprocess.TimeoutExpired:
+        log.debug("wl-paste timed out reading clipboard")
         return None
     if proc.returncode != 0:
+        log.debug("wl-paste returned %d reading clipboard", proc.returncode)
         return None
     return proc.stdout.decode("utf-8", "replace")
 
@@ -122,8 +124,11 @@ def get_primary_text() -> str | None:
     try:
         proc = _run(["wl-paste", "--primary", "--no-newline", "--type", "text"])
     except subprocess.TimeoutExpired:
+        log.debug("wl-paste timed out reading primary selection")
         return None
     if proc.returncode != 0:
+        log.debug("wl-paste returned %d reading primary selection",
+                  proc.returncode)
         return None
     return proc.stdout.decode("utf-8", "replace")
 

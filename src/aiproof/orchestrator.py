@@ -26,6 +26,7 @@ class Orchestrator:
         self.on_state = on_state or (lambda state: None)
         self.enabled = True
         self.last_path = ""
+        self.used_fallback = False
         self._lock = threading.Lock()
 
     def set_config(self, cfg: dict) -> None:
@@ -38,9 +39,11 @@ class Orchestrator:
         if not self._begin():
             return False
         try:
-            if self.cfg.get("paste_mode") == "clipboard-only" or not keystroke.available():
-                if self.cfg.get("paste_mode") != "clipboard-only":
-                    log.warning("ydotool unavailable; degrading to clipboard-only")
+            if self.cfg.get("paste_mode") == "clipboard-only":
+                log.info("paste_mode=clipboard-only; using clipboard flow")
+                return self._clipboard_flow_locked(degraded=False)
+            if not keystroke.available():
+                log.warning("ydotool unavailable; degrading to clipboard-only")
                 return self._clipboard_flow_locked(degraded=True)
             return self._paste_flow_locked()
         finally:
@@ -59,10 +62,12 @@ class Orchestrator:
 
     def _begin(self) -> bool:
         if not self.enabled:
+            log.info("trigger ignored: aiproof is disabled")
             self.notifier.notify("aiproof is disabled",
                                  "Enable it from the tray menu.")
             return False
         if not self._lock.acquire(blocking=False):
+            log.info("trigger ignored: a run is already in progress")
             self.notifier.notify("Already proofreading",
                                  "Please wait for the current run to finish.")
             return False
@@ -74,11 +79,13 @@ class Orchestrator:
         self._lock.release()
 
     def _fail(self, summary: str, body: str = "") -> bool:
+        log.debug("flow failed: %s", summary)
         self.on_state(ERROR)
         self.notifier.notify(summary, body)
         return False
 
     def _done(self, summary: str, body: str = "") -> bool:
+        log.debug("flow done: %s", summary)
         self.on_state(IDLE)
         self.notifier.notify(summary, body)
         return True
@@ -115,6 +122,7 @@ class Orchestrator:
             self.used_fallback = used_fb
             return corrected, elapsed
         except LLMError as e:
+            log.warning("proofread failed: %s", e)
             return str(e)
         except Exception as e:
             log.exception("unexpected proofread failure")
@@ -124,7 +132,7 @@ class Orchestrator:
         note = ""
         if self.last_path in ("line-by-line", "segments"):
             note += f" — {self.last_path} mode"
-        if getattr(self, "used_fallback", False):
+        if self.used_fallback:
             fb = self.cfg.get("fallback") or {}
             note += f" — via fallback {fb.get('model', '')}".rstrip()
         return note
@@ -134,18 +142,25 @@ class Orchestrator:
         by the safety guards' — reporting the latter as clean hides real
         errors from the user."""
         if self.last_path == "fallback":
+            log.warning("result unchanged because every correction was "
+                        "rejected by the guards; reporting as unsafe")
             return self._fail(
                 "Couldn't apply corrections safely",
                 "The model kept restyling the text instead of minimally "
                 "fixing it, so your original was left untouched. Try "
                 "selecting a smaller piece, or a different model.",
             )
-        return self._done("No changes needed",
-                          f"Checked in {elapsed:.1f}s — text is clean.")
+        log.info("no changes needed (path=%s, used_fallback=%s)",
+                 self.last_path or "ok", self.used_fallback)
+        return self._done(
+            "No changes needed",
+            f"Checked in {elapsed:.1f}s{self._path_note()} — text is clean.",
+        )
 
     def _paste_flow_locked(self) -> bool:
-        saved = clipboard.save()
+        saved = None
         try:
+            saved = clipboard.save()
             clipboard.clear()
             # Let the user's hotkey chord clear before typing, then neutralize
             # any modifiers still physically held.
@@ -156,13 +171,17 @@ class Orchestrator:
 
             text = clipboard.poll_for_text(timeout=1.5)
             if text is None:
+                log.info("clipboard still empty after ctrl+c; retrying once")
                 keystroke.release_modifiers()
                 keystroke.ctrl_c()
                 text = clipboard.poll_for_text(timeout=1.5)
             if text is clipboard.NON_TEXT:
+                log.info("selection is not text; restoring clipboard and aborting")
                 clipboard.restore(saved)
                 return self._fail("Selection is not text")
-            if text is None:
+            if text is None or not text.strip():
+                log.info("nothing copied after ctrl+c (empty or whitespace only); "
+                         "aborting")
                 clipboard.restore(saved)
                 return self._fail(
                     "Select some text first",
@@ -187,6 +206,8 @@ class Orchestrator:
             # Give the target app time to read the clipboard before restoring.
             time.sleep(self.cfg.get("restore_delay_ms", 500) / 1000)
             clipboard.restore(saved)
+            log.info("correction pasted in place: %d -> %d chars%s",
+                     len(text), len(corrected), self._path_note())
             return self._done(
                 "Text corrected",
                 f"Replaced in place in {elapsed:.1f}s{self._path_note()} "
@@ -194,13 +215,15 @@ class Orchestrator:
             )
         except Exception as e:
             log.exception("paste flow failed")
-            clipboard.restore(saved)
+            if saved is not None:
+                clipboard.restore(saved)
             return self._fail("Proofreading failed", str(e))
 
     def _clipboard_flow_locked(self, degraded: bool) -> bool:
         try:
             text = clipboard.get_primary_text()
             if not text or not text.strip():
+                log.info("no primary selection; nothing to proofread")
                 return self._fail(
                     "Select some text first",
                     "Highlight the text you want proofread, then try again.",
@@ -215,6 +238,9 @@ class Orchestrator:
                 return self._report_unchanged(elapsed)
 
             clipboard.set_text(corrected)
+            log.info("correction copied to clipboard: %d -> %d chars%s "
+                     "(degraded=%s)",
+                     len(text), len(corrected), self._path_note(), degraded)
             note = "Corrected text copied — press Ctrl+V to paste " \
                    "(Ctrl+Shift+V in terminals)."
             if degraded:

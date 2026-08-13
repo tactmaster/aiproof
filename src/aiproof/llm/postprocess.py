@@ -13,6 +13,7 @@ import logging
 import re
 from typing import Callable
 
+from .errors import LLMError
 from .prompts import build_constrained_prompt, build_repair_prompt
 
 log = logging.getLogger(__name__)
@@ -418,6 +419,11 @@ def enforce_formatting_preservation_ex(
             return finalize(repaired), "repaired"
         log.warning("Repair still invalid (%s)", check(repaired.rstrip("\n"))[1])
         return original, "fallback"
+    except LLMError:
+        # A failed retry *call* (network, provider down) is not a guard
+        # rejection — propagate so provider failover can engage instead of
+        # reporting "couldn't apply corrections safely".
+        raise
     except Exception:
         log.warning("Formatting repair failed", exc_info=True)
         return original, "fallback"
@@ -446,6 +452,8 @@ def proofread_segments(original: str, correct_fn) -> str:
             or not validate_added_punctuation(part, corrected)[0]
             or not validate_no_appended_content(part, corrected)[0]
         ):
+            log.debug("segment correction rejected by guards; "
+                      "keeping original segment")
             out.append(part)
             continue
         # Mid-sentence fragments: don't let the model capitalize the start
@@ -484,6 +492,7 @@ def proofread_line_by_line(original: str, correct_line_fn) -> str:
             or not validate_added_punctuation(line, corrected)[0]
             or not validate_no_appended_content(line, corrected)[0]
         ):
+            log.debug("line correction rejected by guards; keeping original line")
             out.append(line)
             continue
         prefix_match = _LINE_PREFIX_RE.match(line)

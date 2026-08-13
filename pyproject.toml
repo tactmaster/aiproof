@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "aiproof"
-version = "0.1.7"
+version = "0.1.8"
 description = "OS-wide AI text proofreader for GNOME/Wayland: select text anywhere, hit a hotkey, get it corrected in place"
 readme = "README.md"
 license = { text = "GPL-3.0-or-later" }
@@ -25,3 +25,6 @@ aiproof = ["data/icons/*.svg"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "flow: fully-mocked flow route test (collected into build/flow-report.md)",
+]

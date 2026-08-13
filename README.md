@@ -74,6 +74,9 @@ apps, so aiproof combines:
 - **AppIndicator** → tray icon (`gnome-shell-extension-appindicator`,
   enabled by default on Ubuntu).
 
+[docs/flow.md](docs/flow.md) charts every route through the system — a
+simple overview and a detailed flowchart of all branches.
+
 ## CLI
 
 ```
@@ -95,9 +98,14 @@ the config file unless no keyring is available.
 
 ```sh
 make test        # unit tests (offline, fast)
+make test-flow   # route-by-route flow tests; writes build/flow-report.md
 make eval        # live prompt/pipeline evaluation against the configured model
 make eval EVAL_ARGS="--model gemma4:latest --only clean-informal --show-output"
 ```
+
+The flow tests drive every route in [docs/flow.md](docs/flow.md) with the
+LLM, clipboard, and keystrokes mocked, assert that each branch logs its
+decision, and write the captured logs per route to `build/flow-report.md`.
 
 `evals/cases.json` holds 17 realistic proofreading cases (spelling, homophones,
 must-stay-unchanged texts, formatting, verbatim technical content, real

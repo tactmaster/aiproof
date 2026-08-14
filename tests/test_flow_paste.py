@@ -184,7 +184,7 @@ def test_unchanged_clean(orch, fake_clipboard, fake_keystroke, fake_llm,
 
     assert o.run_paste_flow() is True
     assert notifier.summaries[-1] == "No changes needed"
-    assert "text is clean" in notifier.last[1]
+    assert "“clean text” is clean" in notifier.last[1]
     assert "ctrl_v" not in fake_keystroke.calls
     assert fake_clipboard.call_names == \
         ["save", "clear", "poll_for_text", "restore"]  # no set_text

@@ -110,6 +110,19 @@
     "must_not_contain": ["pleese"]
   },
   {
+    "id": "single-word-typo",
+    "category": "spelling",
+    "input": "Inventroy",
+    "must_contain_ci": ["inventory"],
+    "must_not_contain": ["Inventroy"]
+  },
+  {
+    "id": "single-word-clean",
+    "category": "must-not-touch",
+    "input": "Inventory",
+    "unchanged": true
+  },
+  {
     "id": "glued-chat-messages",
     "category": "real-world",
     "input": "The default is 60 minutesYes here https://docs.example.com/config/options#timeoutsecondsYes it is, then you also program in rollback is it fails, the deal with the that youyr external process may fail",

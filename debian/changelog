@@ -17,6 +17,18 @@ aiproof (0.1.8) unstable; urgency=medium
 
  -- Ed Watson <edmundwatson@gmail.com>  Wed, 12 Aug 2026 09:00:00 +0200
 
+aiproof (0.1.8) unstable; urgency=medium
+
+  * "No changes needed" notifications now quote the text that was checked
+    (up to 60 chars), so a capture mismatch — wrong selection, stale
+    clipboard — is immediately visible instead of reading as a missed typo.
+  * Captured selection content is logged at DEBUG level (aiproof -v daemon)
+    for diagnosing capture issues; the default journal still gets only
+    counts, never content.
+  * Eval: single-word typo + single-word clean canary cases.
+
+ -- Ed Watson <edmundwatson@gmail.com>  Fri, 14 Aug 2026 10:30:00 +0200
+
 aiproof (0.1.7) unstable; urgency=medium
 
   * Fallback provider: optional second provider/endpoint/model tried

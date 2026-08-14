@@ -99,6 +99,9 @@ class Orchestrator:
             len(text), text.count("\n") + 1,
             sum(1 for ln in text.split("\n") if not ln.strip()),
         )
+        # Content only at DEBUG (run `aiproof -v daemon` to diagnose capture
+        # mismatches without leaking selections into the default journal).
+        log.debug("captured content: %r", text[:120])
         self.notifier.notify(
             "Proofreading…",
             f"{len(text):,} characters with "
@@ -137,10 +140,11 @@ class Orchestrator:
             note += f" — via fallback {fb.get('model', '')}".rstrip()
         return note
 
-    def _report_unchanged(self, elapsed: float) -> bool:
+    def _report_unchanged(self, elapsed: float, text: str) -> bool:
         """Distinguish 'genuinely clean' from 'every correction was rejected
         by the safety guards' — reporting the latter as clean hides real
-        errors from the user."""
+        errors from the user. Show WHAT was checked, so a capture mismatch
+        (wrong selection, stale clipboard) is immediately visible."""
         if self.last_path == "fallback":
             log.warning("result unchanged because every correction was "
                         "rejected by the guards; reporting as unsafe")
@@ -152,9 +156,13 @@ class Orchestrator:
             )
         log.info("no changes needed (path=%s, used_fallback=%s)",
                  self.last_path or "ok", self.used_fallback)
+        snippet = text.replace("\n", " ⏎ ")
+        if len(snippet) > 60:
+            snippet = snippet[:57] + "…"
         return self._done(
             "No changes needed",
-            f"Checked in {elapsed:.1f}s{self._path_note()} — text is clean.",
+            f"Checked in {elapsed:.1f}s{self._path_note()} — "
+            f"“{snippet}” is clean.",
         )
 
     def _paste_flow_locked(self) -> bool:
@@ -196,7 +204,7 @@ class Orchestrator:
 
             if corrected == text:
                 clipboard.restore(saved)
-                return self._report_unchanged(elapsed)
+                return self._report_unchanged(elapsed, text)
 
             clipboard.set_text(corrected)
             time.sleep(0.1)
@@ -235,7 +243,7 @@ class Orchestrator:
             corrected, elapsed = result
 
             if corrected == text:
-                return self._report_unchanged(elapsed)
+                return self._report_unchanged(elapsed, text)
 
             clipboard.set_text(corrected)
             log.info("correction copied to clipboard: %d -> %d chars%s "

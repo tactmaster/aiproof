@@ -1,3 +1,13 @@
+aiproof (0.1.9) unstable; urgency=medium
+
+  * Opt-in proofread history: every completed proofread (original,
+    corrected, source flow, provider/model, pipeline path, timing) is
+    appended to ~/.local/share/aiproof/history.jsonl (created 0600).
+    Off by default — it stores your text. Toggle in settings (Behavior
+    page); view with 'aiproof history [--tail N | --clear | --path]'.
+
+ -- Ed Watson <edmundwatson@gmail.com>  Thu, 20 Aug 2026 10:25:00 +0200
+
 aiproof (0.1.8) unstable; urgency=medium
 
   * Flow hardening: clipboard snapshot failures now notify instead of
@@ -14,10 +24,6 @@ aiproof (0.1.8) unstable; urgency=medium
     pipeline, provider failover, CLI, DBus dispatch); make test-flow
     writes a route-by-route log report to build/flow-report.md.
   * docs/flow.md: mermaid flow charts (simple + detailed) of every route.
-
- -- Ed Watson <edmundwatson@gmail.com>  Wed, 12 Aug 2026 09:00:00 +0200
-
-aiproof (0.1.8) unstable; urgency=medium
 
   * "No changes needed" notifications now quote the text that was checked
     (up to 60 chars), so a capture mismatch — wrong selection, stale

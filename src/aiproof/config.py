@@ -30,6 +30,9 @@ DEFAULTS = {
     # primary provider is unreachable or fails (e.g. local Ollama for when
     # the remote GPU box is off the network). None disables failover.
     "fallback": None,
+    # Save every proofread (original + corrected + metadata) to
+    # ~/.local/share/aiproof/history.jsonl. Off by default: it's your text.
+    "save_history": False,
 }
 
 

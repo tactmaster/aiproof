@@ -7,7 +7,7 @@ import logging
 import threading
 import time
 
-from . import clipboard, keystroke
+from . import clipboard, history, keystroke
 from .llm.client import LLMError, proofread_with_fallback
 from .notify import Notifier
 
@@ -27,6 +27,7 @@ class Orchestrator:
         self.enabled = True
         self.last_path = ""
         self.used_fallback = False
+        self._flow_source = ""
         self._lock = threading.Lock()
 
     def set_config(self, cfg: dict) -> None:
@@ -123,6 +124,7 @@ class Orchestrator:
             )
             self.last_path = client.last_path
             self.used_fallback = used_fb
+            self._record_history(text, corrected, elapsed)
             return corrected, elapsed
         except LLMError as e:
             log.warning("proofread failed: %s", e)
@@ -130,6 +132,21 @@ class Orchestrator:
         except Exception as e:
             log.exception("unexpected proofread failure")
             return f"Unexpected error: {e}"
+
+    def _record_history(self, original: str, corrected: str,
+                        elapsed: float) -> None:
+        fb = (self.cfg.get("fallback") or {}) if self.used_fallback else {}
+        history.record(
+            self.cfg,
+            source=self._flow_source,
+            original=original,
+            corrected=corrected,
+            elapsed=elapsed,
+            path=self.last_path,
+            provider=fb.get("provider") or self.cfg["provider"],
+            model=fb.get("model") or self.cfg["model"],
+            used_fallback=self.used_fallback,
+        )
 
     def _path_note(self) -> str:
         note = ""
@@ -166,6 +183,7 @@ class Orchestrator:
         )
 
     def _paste_flow_locked(self) -> bool:
+        self._flow_source = "paste"
         saved = None
         try:
             saved = clipboard.save()
@@ -228,6 +246,7 @@ class Orchestrator:
             return self._fail("Proofreading failed", str(e))
 
     def _clipboard_flow_locked(self, degraded: bool) -> bool:
+        self._flow_source = "clipboard"
         try:
             text = clipboard.get_primary_text()
             if not text or not text.strip():

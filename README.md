@@ -85,6 +85,7 @@ aiproof trigger             # same as the hotkey (needs the daemon)
 aiproof trigger-clipboard   # clipboard-only flow
 aiproof settings            # GTK4 settings window
 aiproof setup               # first-run system checks with fixes
+aiproof history --tail 20   # saved proofreads (opt-in; --clear, --path)
 echo "sum text" | aiproof proofread   # stdin→stdout, for scripts/debugging
 ```
 
@@ -93,6 +94,11 @@ echo "sum text" | aiproof proofread   # stdin→stdout, for scripts/debugging
 `~/.config/aiproof/config.json` — edited by the settings app, live-reloaded
 by the daemon. API keys live in the Secret Service (GNOME Keyring), never in
 the config file unless no keyring is available.
+
+**Proofread history** (opt-in, settings → Behavior): every completed
+proofread — original, corrected, provider, pipeline path, timing — is
+appended to `~/.local/share/aiproof/history.jsonl` (file mode 0600, local
+only). View with `aiproof history`; it's JSONL, so `jq` works too.
 
 ## Tests
 

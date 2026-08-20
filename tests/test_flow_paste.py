@@ -240,3 +240,39 @@ def test_clipboard_save_crash_is_reported(orch, fake_clipboard, fake_llm,
     # the lock was released: a second run goes through
     fake_clipboard.save_error = None
     assert o.run_paste_flow() is True
+
+
+def test_history_recorded_when_enabled(orch, fake_clipboard, fake_llm,
+                                       tmp_path, monkeypatch):
+    """paste: with save_history on, the completed proofread is appended to
+    the history file with the paste source and run metadata."""
+    import json
+
+    from aiproof import history
+
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    fake_clipboard.poll_results.append("teh text")
+    fake_llm.corrected = "the text"
+    o = orch(save_history=True)
+
+    assert o.run_paste_flow() is True
+    entries = [json.loads(line) for line in
+               history.history_path().read_text().splitlines()]
+    assert len(entries) == 1
+    assert entries[0]["source"] == "paste"
+    assert entries[0]["original"] == "teh text"
+    assert entries[0]["corrected"] == "the text"
+    assert entries[0]["changed"] is True
+
+
+def test_history_off_by_default(orch, fake_clipboard, fake_llm, tmp_path,
+                                monkeypatch):
+    """paste: without opting in, nothing is written."""
+    from aiproof import history
+
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    fake_clipboard.poll_results.append("teh text")
+    o = orch()
+
+    assert o.run_paste_flow() is True
+    assert not history.history_path().exists()

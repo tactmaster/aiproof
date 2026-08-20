@@ -303,6 +303,21 @@ class SettingsWindow(Adw.PreferencesWindow):
         startup.add(self.autostart_row)
         page.add(startup)
 
+        from .history import history_path
+
+        hist_group = Adw.PreferencesGroup(
+            title="History",
+            description="Saves every proofread (your text included) to a "
+                        "private local file — view with: aiproof history",
+        )
+        self.history_row = Adw.SwitchRow(
+            title="Save proofread history",
+            subtitle=str(history_path()),
+        )
+        self.history_row.connect("notify::active", self._save_history_toggle)
+        hist_group.add(self.history_row)
+        page.add(hist_group)
+
         return page
 
     def _save_hotkeys(self, _row) -> None:
@@ -321,6 +336,11 @@ class SettingsWindow(Adw.PreferencesWindow):
             else "auto",
             restore_delay_ms=int(self.delay_row.get_value()),
         )
+
+    def _save_history_toggle(self, *_args) -> None:
+        if self._loading:
+            return
+        config.update(save_history=self.history_row.get_active())
 
     def _save_autostart(self, *_args) -> None:
         if self._loading:
@@ -388,6 +408,7 @@ class SettingsWindow(Adw.PreferencesWindow):
         )
         self.delay_row.set_value(cfg.get("restore_delay_ms", 500))
         self.autostart_row.set_active(bool(cfg.get("autostart", True)))
+        self.history_row.set_active(bool(cfg.get("save_history", False)))
 
         fallback = cfg.get("fallback") or {}
         self.fb_enabled_row.set_active(bool(fallback))

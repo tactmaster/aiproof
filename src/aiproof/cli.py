@@ -37,6 +37,16 @@ def main(argv=None) -> int:
 
     sub.add_parser("proofread", help="proofread stdin to stdout (debug)")
 
+    p_history = sub.add_parser(
+        "history", help="show saved proofreads (enable in settings first)"
+    )
+    p_history.add_argument("--tail", type=int, default=10, metavar="N",
+                           help="show the last N entries (default 10)")
+    p_history.add_argument("--clear", action="store_true",
+                           help="delete the history file")
+    p_history.add_argument("--path", action="store_true",
+                           help="print the history file path")
+
     args = parser.parse_args(argv)
     logging.basicConfig(
         level=logging.DEBUG if args.verbose else logging.INFO,
@@ -45,6 +55,8 @@ def main(argv=None) -> int:
 
     if args.cmd == "proofread":
         return _cmd_proofread()
+    if args.cmd == "history":
+        return _cmd_history(args)
     if args.cmd == "daemon":
         from .daemon import run_daemon
         return run_daemon()
@@ -82,14 +94,24 @@ def _cmd_proofread() -> int:
         print(f"aiproof: primary provider failed ({error}); "
               "trying fallback…", file=sys.stderr)
 
+    cfg = config.load()
     try:
         corrected, elapsed, client, used_fb = proofread_with_fallback(
-            config.load(), text, on_fallback=on_fallback
+            cfg, text, on_fallback=on_fallback
         )
     except LLMError as e:
         log.warning("proofread failed: %s", e)
         print(f"aiproof: {e}", file=sys.stderr)
         return 1
+
+    from . import history
+    fb = (cfg.get("fallback") or {}) if used_fb else {}
+    history.record(
+        cfg, source="cli", original=text, corrected=corrected,
+        elapsed=elapsed, path=client.last_path,
+        provider=fb.get("provider") or cfg["provider"],
+        model=fb.get("model") or cfg["model"], used_fallback=used_fb,
+    )
     sys.stdout.write(corrected)
     if stripped_trailing:
         sys.stdout.write("\n")
@@ -108,6 +130,43 @@ def _cmd_proofread() -> int:
             "guards; output is your original text, NOT verified clean.",
             file=sys.stderr,
         )
+    return 0
+
+
+def _cmd_history(args) -> int:
+    from . import history
+
+    if args.path:
+        print(history.history_path())
+        return 0
+    if args.clear:
+        if history.clear():
+            print("History cleared.")
+        else:
+            print("No history file to clear.")
+        return 0
+
+    entries = history.read_recent(args.tail)
+    if not entries:
+        from . import config
+        if config.load().get("save_history"):
+            print("No proofreads recorded yet.")
+        else:
+            print("History is disabled — enable it in aiproof settings "
+                  "(Behavior page) or set \"save_history\": true in "
+                  "~/.config/aiproof/config.json")
+        return 0
+    for e in entries:
+        mark = "changed" if e.get("changed") else "clean"
+        print(f"— {e.get('timestamp', '?')}  [{e.get('source', '?')}, "
+              f"{e.get('provider', '?')}/{e.get('model', '?')}, "
+              f"{e.get('pipeline_path', '?')}, {mark}"
+              f"{', fallback' if e.get('used_fallback') else ''}]")
+        original = str(e.get("original", "")).replace("\n", "\n    ")
+        print(f"  < {original}")
+        if e.get("changed"):
+            corrected = str(e.get("corrected", "")).replace("\n", "\n    ")
+            print(f"  > {corrected}")
     return 0
 
 

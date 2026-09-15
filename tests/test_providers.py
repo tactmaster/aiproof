@@ -31,6 +31,7 @@ class TestRequestShapes:
             "model": "phi3.5:latest",
             "prompt": "PROMPT",
             "stream": False,
+            "keep_alive": "30m",
             "options": {"temperature": 0.1, "num_predict": 2000},
         }
 

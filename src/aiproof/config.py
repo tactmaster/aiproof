@@ -36,6 +36,9 @@ DEFAULTS = {
     # Inject learned context (domain vocabulary + summary from saved history)
     # into the proofreading prompt. Requires save_history for data.
     "context_aware": False,
+    # How long Ollama keeps the model loaded after a request (its own default
+    # evicts after 5 minutes -> 9-40s cold reload on the next proofread).
+    "ollama_keep_alive": "30m",
 }
 
 

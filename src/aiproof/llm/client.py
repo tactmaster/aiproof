@@ -187,6 +187,9 @@ class LLMClient:
                     "model": self.model,
                     "prompt": prompt,
                     "stream": False,
+                    # Keep the model resident between proofreads — a cold
+                    # load costs 9-40s, dwarfing the correction itself.
+                    "keep_alive": self.cfg.get("ollama_keep_alive", "30m"),
                     "options": {"temperature": TEMPERATURE, "num_predict": MAX_OUTPUT_TOKENS},
                 },
             }

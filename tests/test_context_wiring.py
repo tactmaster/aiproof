@@ -10,6 +10,7 @@ from conftest import make_cfg
 from aiproof import config
 from aiproof.llm.client import LLMClient
 from aiproof.llm.prompts import (
+    _line_note,
     PROOFREAD_PROMPT,
     _CONSTRAINT_ANCHOR,
     build_proofread_prompt,
@@ -25,7 +26,7 @@ class TestPromptWithoutContext:
     def test_no_args_is_unchanged(self):
         """No context args: byte-identical to the plain formatted prompt."""
         prompt = build_proofread_prompt("x")
-        assert prompt == PROOFREAD_PROMPT.format(text="x")
+        assert prompt == PROOFREAD_PROMPT.format(text="x", line_note=_line_note("x"))
         assert prompt == build_proofread_prompt("x", None, None)
         assert HEADER not in prompt
         assert _CONSTRAINT_ANCHOR in prompt
@@ -33,7 +34,7 @@ class TestPromptWithoutContext:
 
     def test_empty_context_is_unchanged(self):
         """Empty list / empty summary are falsy: still no block."""
-        assert build_proofread_prompt("x", [], "") == PROOFREAD_PROMPT.format(text="x")
+        assert build_proofread_prompt("x", [], "") == PROOFREAD_PROMPT.format(text="x", line_note=_line_note("x"))
         assert HEADER not in build_proofread_prompt("x", [], None)
 
 
@@ -192,3 +193,23 @@ class TestConfigFlag:
         cfg["context_aware"] = True
         config.save(cfg)
         assert config.load()["context_aware"] is True
+
+
+class TestLineNote:
+    def test_single_line_note(self):
+        prompt = build_proofread_prompt("one line here")
+        assert "THIS INPUT IS ONE SINGLE LINE." in prompt
+
+    def test_multiline_note_counts_lines(self):
+        prompt = build_proofread_prompt("a\nb\nc\nd")
+        assert "THIS INPUT HAS EXACTLY 4 LINES." in prompt
+        assert "EXACTLY 4 LINES, EACH LINE CORRECTED IN PLACE." in prompt
+
+    def test_note_sits_before_input_text(self):
+        prompt = build_proofread_prompt("a\nb")
+        assert prompt.index("EXACTLY 2 LINES") < prompt.index('INPUT TEXT:')
+
+    def test_constrained_retry_inherits_note(self):
+        from aiproof.llm.prompts import build_constrained_prompt
+        prompt = build_constrained_prompt("a\nb\nc", ["Semicolons added"])
+        assert "THIS INPUT HAS EXACTLY 3 LINES." in prompt

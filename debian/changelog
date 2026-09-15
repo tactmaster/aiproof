@@ -1,3 +1,15 @@
+aiproof (0.1.12) unstable; urgency=medium
+
+  * First-attempt formatting: the prompt now states the input's exact line
+    count per request ("THIS INPUT HAS EXACTLY 4 LINES...") — small models
+    obey a concrete number far better than abstract newline rules. Dropped
+    line breaks were the dominant guard rejection (journal: 4->3, 5->4,
+    3->1 collapses), each one costing a retry LLM call. With qwen2.5:3b
+    every eval case now passes formatting on the first attempt; score up
+    from 14/20 to 17/21. New multiline-collapse eval case.
+
+ -- Ed Watson <edmundwatson@gmail.com>  Wed, 16 Sep 2026 14:00:00 +0200
+
 aiproof (0.1.11) unstable; urgency=medium
 
   * Ollama requests now send keep_alive (config ollama_keep_alive, default

@@ -82,7 +82,7 @@ Wrong Output (formalizes informal words and expands abbreviations):
 "going to push the fix to production tomorrow"
 
 Now proofread this text following the rules above:
-
+{line_note}
 INPUT TEXT:
 "{text}"
 
@@ -141,9 +141,21 @@ def build_context_block(context_words=None, context_summary=None) -> str:
     return block + "\n"
 
 
+def _line_note(text: str) -> str:
+    """A concrete, per-request restatement of the newline rules. Small models
+    obey "exactly 4 lines" far more reliably than the abstract rules above —
+    dropped line breaks were the dominant first-attempt failure."""
+    count = text.count("\n") + 1
+    if count == 1:
+        return ("\nTHIS INPUT IS ONE SINGLE LINE. "
+                "YOUR OUTPUT MUST BE ONE SINGLE LINE.\n")
+    return (f"\nTHIS INPUT HAS EXACTLY {count} LINES. YOUR OUTPUT MUST HAVE "
+            f"EXACTLY {count} LINES, EACH LINE CORRECTED IN PLACE.\n")
+
+
 def build_proofread_prompt(text: str, context_words=None,
                            context_summary=None) -> str:
-    prompt = PROOFREAD_PROMPT.format(text=text)
+    prompt = PROOFREAD_PROMPT.format(text=text, line_note=_line_note(text))
     # Spliced AFTER .format(): learned vocabulary/summaries may contain braces.
     block = build_context_block(context_words, context_summary)
     if not block:

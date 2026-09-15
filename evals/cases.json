@@ -123,6 +123,13 @@
     "unchanged": true
   },
   {
+    "id": "multiline-collapse",
+    "category": "formatting",
+    "input": "standup notes for teh team\n- fixt the login bugg\n- reviewd two PRs\n- waitng on CI\ntomorow: deploy to staging",
+    "must_contain_ci": ["the login bug", "tomorrow"],
+    "must_not_contain": ["fixt", "bugg", "reviewd", "waitng", "tomorow"]
+  },
+  {
     "id": "glued-chat-messages",
     "category": "real-world",
     "input": "The default is 60 minutesYes here https://docs.example.com/config/options#timeoutsecondsYes it is, then you also program in rollback is it fails, the deal with the that youyr external process may fail",

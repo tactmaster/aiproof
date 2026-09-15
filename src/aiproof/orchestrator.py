@@ -7,7 +7,7 @@ import logging
 import threading
 import time
 
-from . import clipboard, history, keystroke
+from . import clipboard, context, history, keystroke
 from .llm.client import LLMError, proofread_with_fallback
 from .notify import Notifier
 
@@ -147,6 +147,10 @@ class Orchestrator:
             model=fb.get("model") or self.cfg["model"],
             used_fallback=self.used_fallback,
         )
+        # Off the hot path: the paste keystroke hasn't fired yet, so the
+        # profile refresh (dictionary load + possible LLM summary) runs in
+        # its own thread. Gated inside on context_aware + save_history.
+        context.schedule_refresh(self.cfg)
 
     def _path_note(self) -> str:
         note = ""

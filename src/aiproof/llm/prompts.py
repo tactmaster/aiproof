@@ -115,11 +115,42 @@ CORRECTED DRAFT (content to use):
 FINAL OUTPUT (same formatting as ORIGINAL):'''
 
 
-def build_proofread_prompt(text: str) -> str:
-    return PROOFREAD_PROMPT.format(text=text)
-
-
 _CONSTRAINT_ANCHOR = "Now proofread this text following the rules above:"
+
+CONTEXT_HEADER = (
+    "CONTEXT (background about this user's writing — use it ONLY to avoid\n"
+    '"correcting" intentional terms and style; NEVER to add or import content):\n'
+)
+CONTEXT_SUMMARY_LINE = "Typical texts: {summary}\n"
+CONTEXT_WORDS_LINE = (
+    'Known user vocabulary (spelled as intended; NEVER "correct", re-spell,\n'
+    "re-case, or expand these): {words}\n"
+)
+
+
+def build_context_block(context_words=None, context_summary=None) -> str:
+    """The CONTEXT block spliced into the proofread prompt, or "" when there
+    is nothing to say."""
+    if not context_words and not context_summary:
+        return ""
+    block = CONTEXT_HEADER
+    if context_summary:
+        block += CONTEXT_SUMMARY_LINE.format(summary=context_summary)
+    if context_words:
+        block += CONTEXT_WORDS_LINE.format(words=", ".join(context_words))
+    return block + "\n"
+
+
+def build_proofread_prompt(text: str, context_words=None,
+                           context_summary=None) -> str:
+    prompt = PROOFREAD_PROMPT.format(text=text)
+    # Spliced AFTER .format(): learned vocabulary/summaries may contain braces.
+    block = build_context_block(context_words, context_summary)
+    if not block:
+        return prompt
+    if _CONSTRAINT_ANCHOR in prompt:
+        return prompt.replace(_CONSTRAINT_ANCHOR, block + _CONSTRAINT_ANCHOR, 1)
+    return block + prompt
 
 CONSTRAINT_BLOCK = """IMPORTANT — A previous attempt at this exact task was REJECTED because it:
 {violations}

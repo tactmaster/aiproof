@@ -1,3 +1,19 @@
+aiproof (0.1.10) unstable; urgency=medium
+
+  * Context-aware proofreading (opt-in, requires saved history): a consensus
+    profile is mined from history — domain vocabulary the model must not
+    "correct" (words that survived >=2 proofreads, dictionary-filtered with
+    case-aware rules and typo edit-distance checks) plus a one-sentence LLM
+    domain summary regenerated in the background every ~25 proofreads.
+    Injected as a small capped block into the prompt: zero LLM calls on the
+    hot path, ~100 extra prompt tokens. Inspect with 'aiproof context'
+    (--refresh, --clear); 'history --clear' also clears the learned context.
+    Settings toggle on the Behavior page. Evals pin the flag off for
+    determinism (opt in with --context). Recommends wamerican (word list;
+    shape-based fallback without it).
+
+ -- Ed Watson <edmundwatson@gmail.com>  Tue, 15 Sep 2026 10:00:00 +0200
+
 aiproof (0.1.9) unstable; urgency=medium
 
   * Opt-in proofread history: every completed proofread (original,

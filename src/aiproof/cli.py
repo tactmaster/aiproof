@@ -37,6 +37,15 @@ def main(argv=None) -> int:
 
     sub.add_parser("proofread", help="proofread stdin to stdout (debug)")
 
+    p_context = sub.add_parser(
+        "context",
+        help="show the learned writing context (vocabulary + domain summary)",
+    )
+    p_context.add_argument("--refresh", action="store_true",
+                           help="rebuild now (includes the LLM domain summary)")
+    p_context.add_argument("--clear", action="store_true",
+                           help="delete the learned context")
+
     p_history = sub.add_parser(
         "history", help="show saved proofreads (enable in settings first)"
     )
@@ -57,6 +66,8 @@ def main(argv=None) -> int:
         return _cmd_proofread()
     if args.cmd == "history":
         return _cmd_history(args)
+    if args.cmd == "context":
+        return _cmd_context(args)
     if args.cmd == "daemon":
         from .daemon import run_daemon
         return run_daemon()
@@ -130,18 +141,60 @@ def _cmd_proofread() -> int:
             "guards; output is your original text, NOT verified clean.",
             file=sys.stderr,
         )
+
+    # Vocab-only refresh, synchronous and AFTER all output (a background
+    # thread would die at CLI exit; the LLM summary is daemon-side only).
+    # min_new_entries=5: don't reload the dictionary on every single run.
+    from . import context
+    if cfg.get("context_aware") and cfg.get("save_history"):
+        context.refresh_if_stale(cfg, min_new_entries=5)
+    return 0
+
+
+def _cmd_context(args) -> int:
+    from . import config, context
+
+    cfg = config.load()
+    if args.clear:
+        if context.clear():
+            print("Learned context cleared.")
+        else:
+            print("No learned context to clear.")
+        return 0
+    if args.refresh:
+        if not cfg.get("save_history"):
+            print("aiproof: history is disabled — nothing to learn from. "
+                  "Enable 'Save proofread history' in settings first.",
+                  file=sys.stderr)
+            return 1
+        context.refresh(cfg, allow_summary=True)
+        print("Context refreshed.")
+
+    words, summary = context.load_words_and_summary(
+        dict(cfg, context_aware=True)  # show the profile even when injection is off
+    )
+    enabled = "enabled" if cfg.get("context_aware") else "DISABLED (not injected)"
+    print(f"Context-aware proofreading: {enabled}")
+    print(f"Typical texts: {summary or '(no summary yet)'}")
+    if words:
+        print(f"Known vocabulary ({len(words)}): " + ", ".join(words))
+    else:
+        print("Known vocabulary: (none learned yet — needs a few saved "
+              "proofreads)")
     return 0
 
 
 def _cmd_history(args) -> int:
-    from . import history
+    from . import context, history
 
     if args.path:
         print(history.history_path())
         return 0
     if args.clear:
-        if history.clear():
-            print("History cleared.")
+        cleared = history.clear()
+        context.clear()  # a deleted history must stop influencing prompts
+        if cleared:
+            print("History cleared (learned context too).")
         else:
             print("No history file to clear.")
         return 0

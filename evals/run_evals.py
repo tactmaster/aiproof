@@ -106,6 +106,10 @@ def main() -> int:
     parser.add_argument("--model", default=None)
     parser.add_argument("--endpoint", default=None)
     parser.add_argument("--only", default=None, help="comma-separated case ids")
+    parser.add_argument("--context", action="store_true",
+                        help="enable context-aware prompting (refreshes the "
+                             "profile first; default is pinned OFF for "
+                             "determinism)")
     parser.add_argument("--show-output", action="store_true",
                         help="print the corrected text for every case")
     args = parser.parse_args()
@@ -116,6 +120,13 @@ def main() -> int:
         cases = [c for c in cases if c["id"] in wanted]
 
     cfg = config.load()
+    # Pin OFF by default: the runner uses the live user config, and a learned
+    # profile would make eval results depend on the developer's history.
+    cfg["context_aware"] = False
+    if args.context:
+        from aiproof import context as aiproof_context
+        cfg["context_aware"] = True
+        aiproof_context.refresh(cfg)
     if args.model:
         cfg["model"] = args.model
     if args.endpoint:

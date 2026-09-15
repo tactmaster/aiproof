@@ -33,6 +33,9 @@ DEFAULTS = {
     # Save every proofread (original + corrected + metadata) to
     # ~/.local/share/aiproof/history.jsonl. Off by default: it's your text.
     "save_history": False,
+    # Inject learned context (domain vocabulary + summary from saved history)
+    # into the proofreading prompt. Requires save_history for data.
+    "context_aware": False,
 }
 
 

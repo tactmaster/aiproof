@@ -151,6 +151,11 @@ class Daemon:
             self._register_hotkeys()
 
     def _startup_checks(self) -> None:
+        # Already on a background thread: catch up the learned-context
+        # profile (including the LLM domain summary when due).
+        if self.cfg.get("context_aware") and self.cfg.get("save_history"):
+            from . import context
+            context.refresh_if_stale(self.cfg, allow_summary=True)
         if not keystroke.available():
             self.notifier.notify(
                 "aiproof: automatic paste unavailable",

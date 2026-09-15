@@ -25,7 +25,7 @@ Depends: ${python3:Depends},
  python3-secretstorage,
  wl-clipboard,
  ydotool
-Recommends: gnome-shell-extension-appindicator
+Recommends: gnome-shell-extension-appindicator, wamerican
 Description: OS-wide AI text proofreader for GNOME/Wayland
  Select text in any application, press a global hotkey, and have it
  proofread by an LLM (local Ollama by default; OpenAI-compatible,

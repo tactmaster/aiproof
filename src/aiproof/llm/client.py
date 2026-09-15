@@ -9,6 +9,7 @@ from typing import Callable, Optional
 
 import requests
 
+from .. import context
 # Re-exported for existing importers (orchestrator, cli, tests, evals).
 from .errors import LLMError, TextTooLongError  # noqa: F401
 from .postprocess import (
@@ -43,6 +44,9 @@ class LLMClient:
         self.model = cfg.get("model") or provider["model"]
         self.timeout = cfg.get("request_timeout_s", 60)
         self.max_chars = cfg.get("max_chars", 10000)
+        # Learned domain vocabulary/summary spliced into the prompt; ([], None)
+        # unless context_aware is on and a cached profile exists.
+        self.context_words, self.context_summary = context.load_words_and_summary(cfg)
         # Which pipeline path produced the last proofread() result:
         # "ok" | "repaired" | "line-by-line" | "segments" | "fallback"
         self.last_path = ""
@@ -56,7 +60,11 @@ class LLMClient:
                      len(text), self.max_chars)
             raise TextTooLongError(len(text), self.max_chars)
         start = time.monotonic()
-        response = self.query(build_proofread_prompt(text))
+        response = self.query(build_proofread_prompt(
+            text,
+            context_words=self.context_words,
+            context_summary=self.context_summary,
+        ))
         cleaned = full_clean(response, text)
         if not cleaned:
             log.warning("model returned an empty response")
@@ -107,7 +115,11 @@ class LLMClient:
         """One line through the model + cleanup; None means keep the
         original line."""
         try:
-            response = self.query(build_proofread_prompt(line))
+            response = self.query(build_proofread_prompt(
+                line,
+                context_words=self.context_words,
+                context_summary=self.context_summary,
+            ))
         except LLMError as e:
             log.warning("line correction failed: %s", e)
             return None

@@ -100,6 +100,16 @@ proofread — original, corrected, provider, pipeline path, timing — is
 appended to `~/.local/share/aiproof/history.jsonl` (file mode 0600, local
 only). View with `aiproof history`; it's JSONL, so `jq` works too.
 
+**Context-aware proofreading** (opt-in, needs history): aiproof learns an
+aggregate profile of what you write — domain vocabulary that must never be
+"corrected" (a word qualifies only after surviving two or more proofreads
+unchanged, passing dictionary/typo filters) and a one-sentence domain
+summary written by the LLM in the background every ~25 proofreads. The
+profile is a small capped prompt block (~100 tokens): proofreads are not
+slowed down, and no per-run examples from your past are ever included.
+Inspect or reset it any time with `aiproof context` / `--refresh` /
+`--clear`.
+
 ## Tests
 
 ```sh

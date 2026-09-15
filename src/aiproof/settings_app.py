@@ -316,6 +316,14 @@ class SettingsWindow(Adw.PreferencesWindow):
         )
         self.history_row.connect("notify::active", self._save_history_toggle)
         hist_group.add(self.history_row)
+
+        self.context_row = Adw.SwitchRow(
+            title="Context-aware proofreading",
+            subtitle="Learns your domain vocabulary and typical writing "
+                     "from saved history — view with: aiproof context",
+        )
+        self.context_row.connect("notify::active", self._save_context_toggle)
+        hist_group.add(self.context_row)
         page.add(hist_group)
 
         return page
@@ -341,6 +349,11 @@ class SettingsWindow(Adw.PreferencesWindow):
         if self._loading:
             return
         config.update(save_history=self.history_row.get_active())
+
+    def _save_context_toggle(self, *_args) -> None:
+        if self._loading:
+            return
+        config.update(context_aware=self.context_row.get_active())
 
     def _save_autostart(self, *_args) -> None:
         if self._loading:
@@ -409,6 +422,7 @@ class SettingsWindow(Adw.PreferencesWindow):
         self.delay_row.set_value(cfg.get("restore_delay_ms", 500))
         self.autostart_row.set_active(bool(cfg.get("autostart", True)))
         self.history_row.set_active(bool(cfg.get("save_history", False)))
+        self.context_row.set_active(bool(cfg.get("context_aware", False)))
 
         fallback = cfg.get("fallback") or {}
         self.fb_enabled_row.set_active(bool(fallback))

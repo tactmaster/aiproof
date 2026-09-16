@@ -190,6 +190,17 @@ def unwrap_url_brackets(text: str, original: str) -> str:
     return _BRACKETED_URL_RE.sub(repl, text)
 
 
+def desemicolon(text: str, original: str) -> str:
+    """When the original contains no semicolons, every semicolon in the
+    response is a model addition (joining clauses is restyling — our rules
+    never require adding one). Convert them to commas instead of rejecting
+    the whole correction: that used to cost two extra LLM calls and a
+    conservative per-line salvage."""
+    if ";" in text and ";" not in (original or ""):
+        return text.replace(";", ",")
+    return text
+
+
 def full_clean(response: str, original: str) -> str:
     """The complete response-cleanup chain, in the one order that works:
     wrapper phrases / fences / think-blocks, extra explanation paragraphs,
@@ -203,6 +214,7 @@ def full_clean(response: str, original: str) -> str:
     cleaned = strip_trailing_parenthetical(cleaned, original)
     cleaned = strip_trailing_signoff(unwrap_quotes(cleaned, original), original)
     cleaned = unwrap_url_brackets(cleaned, original)
+    cleaned = desemicolon(cleaned, original)
     return normalize_edges(cleaned, original)
 
 
@@ -521,5 +533,9 @@ def proofread_line_by_line(original: str, correct_line_fn) -> str:
         # Restore a trailing colon the model dropped ("Steps:" -> "Steps").
         if line.rstrip().endswith(":") and not corrected.rstrip().endswith(":"):
             corrected = corrected.rstrip().rstrip(".") + ":"
+        # Restore trailing whitespace the model trimmed (cursor position!).
+        trailing_ws = line[len(line.rstrip()):]
+        if trailing_ws and not corrected.endswith(trailing_ws):
+            corrected = corrected.rstrip() + trailing_ws
         out.append(corrected)
     return "\n".join(out)

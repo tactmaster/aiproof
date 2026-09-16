@@ -1,3 +1,15 @@
+aiproof (0.1.14) unstable; urgency=medium
+
+  * Mechanically convert model-added semicolons to commas when the original
+    text had none (a proofreader never NEEDS to add one). qwen habitually
+    joins clauses with ';', which the guards rejected wholesale: two extra
+    LLM calls plus a conservative per-line salvage that often left real
+    typos unfixed. A live 6-line reproduction dropped from 18.2s
+    (path=line-by-line) to 0.8s (path=ok, first attempt).
+  * Per-line salvage now restores trailing whitespace the model trimmed.
+
+ -- Ed Watson <edmundwatson@gmail.com>  Wed, 16 Sep 2026 11:10:00 +0200
+
 aiproof (0.1.13) unstable; urgency=medium
 
   * Fix: a user's own closing line ("Is there anythng else or should we

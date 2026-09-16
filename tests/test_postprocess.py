@@ -1,6 +1,7 @@
 import pytest
 
 from aiproof.llm.postprocess import (
+    desemicolon,
     full_clean,
     strip_trailing_parenthetical,
     clean_response,
@@ -385,14 +386,17 @@ class TestEnforceFormattingPreservation:
 
         assert enforce_formatting_preservation(original, candidate, query_fn) == "A\nB"
 
-    def test_repair_fixes_lines_but_still_adds_semicolon_falls_back(self):
+    def test_repair_fixes_lines_and_semicolon_is_mechanically_converted(self):
+        # Previously this fell back to the original; desemicolon() now
+        # converts the model's added ';' to ',' inside full_clean, so the
+        # repaired candidate is accepted instead of discarded.
         original = "a\nb"
         candidate = "A; B"  # both wrong line count AND an added semicolon
 
         def query_fn(prompt):
             return "A;\nB"  # correct line count now, but semicolon still added
 
-        assert enforce_formatting_preservation(original, candidate, query_fn) == original
+        assert enforce_formatting_preservation(original, candidate, query_fn) == "A,\nB"
 
 
 class TestEnforcePathReporting:
@@ -720,3 +724,33 @@ class TestTypoedUserSignoffPreserved:
         assert strip_trailing_signoff(
             "Fixed sentence. Hope this helps!", "Fixd sentence."
         ) == "Fixed sentence."
+
+
+class TestDesemicolon:
+    """Live finding: qwen habitually joins clauses with semicolons; the guard
+    rejected the whole correction (2 extra LLM calls + conservative salvage).
+    Mechanical repair instead: original had no ';' -> model's ';' become ','."""
+
+    def test_added_semicolon_becomes_comma(self):
+        assert desemicolon(
+            "The meeting starts at 9am; we should go.", "teh meeting starts at 9am, we should go."
+        ) == "The meeting starts at 9am, we should go."
+
+    def test_existing_semicolons_untouched(self):
+        original = "We shipped it; the custommers are happy."
+        corrected = "We shipped it; the customers are happy."
+        assert desemicolon(corrected, original) == corrected
+
+    def test_full_clean_repairs_instead_of_rejecting(self):
+        original = "Thanks I think this is very usefull\n\nI am going to be nit picking here"
+        response = "Thanks; I think this is very useful\n\nI am going to be nitpicking here"
+        cleaned = full_clean(response, original)
+        assert ";" not in cleaned
+        valid, _ = validate_added_punctuation(original, cleaned)
+        assert valid
+
+    def test_trailing_whitespace_restored_per_line(self):
+        assert proofread_line_by_line(
+            "AVIGILON is a local serch address ",
+            lambda ln: "AVIGILON is a local search address"
+        ) == "AVIGILON is a local search address "

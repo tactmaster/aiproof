@@ -138,6 +138,13 @@
     "bonus_contain": ["rollback if it fails", "your external process"]
   },
   {
+    "id": "signoff-with-typos",
+    "category": "sign-off-bait",
+    "input": "I will pass that feedback on to our product owner.\n\nIs there anythng else or should we close this ticekt",
+    "must_contain_ci": ["is there anything else or should we close this ticket"],
+    "must_not_contain": ["anythng", "ticekt"]
+  },
+  {
     "id": "support-email",
     "category": "real-world",
     "input": "Hello,\n\nWe are working to improce the logging of delta generation.\n\nHowever we got this error out of the system\n\n2026/07/21 01:47:36 running: /usr/bin/example-delta-tool [-o /work/job1234/out.img -D  -0 -B 67108864 -W 8388608 -P 262144 -I 32768 /work/job1234/a /work/job1234/b -- -- -0 -B 67108864 -W 8388608 -P 262144 -I 32768]\n\nIf you can try the delta with those paramaters, and it failed. Then we have a lead. \nThen to fix the problem we can set the parmater you use in the system to fix the generation if that make sence",

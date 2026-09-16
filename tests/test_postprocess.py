@@ -687,3 +687,36 @@ class TestUnwrapUrlBrackets:
     def test_non_url_brackets_untouched(self):
         from aiproof.llm.postprocess import unwrap_url_brackets
         assert unwrap_url_brackets("a <b> c", "a b c") == "a <b> c"
+
+
+class TestTypoedUserSignoffPreserved:
+    """Regression (live bug): the user's own closing line contained typos, so
+    once corrected it no longer matched the original verbatim and the sign-off
+    stripper ate it — the proofread then 'fixed nothing'."""
+
+    ORIGINAL = ("I will pass that feedback on to our product owner.\n\n"
+                "Is there anythng else or should we close this ticekt")
+    CORRECTED = ("I will pass that feedback on to our product owner.\n\n"
+                 "Is there anything else or should we close this ticket")
+
+    def test_corrected_users_signoff_survives(self):
+        assert strip_trailing_signoff(self.CORRECTED, self.ORIGINAL) == \
+            self.CORRECTED
+
+    def test_model_chatter_still_stripped(self):
+        padded = self.CORRECTED + "\n\nIs there anything else I can help you with?"
+        assert strip_trailing_signoff(padded, self.ORIGINAL) == self.CORRECTED
+
+    def test_full_clean_end_to_end(self):
+        assert full_clean(self.CORRECTED, self.ORIGINAL) == self.CORRECTED
+
+    def test_typoed_parenthetical_survives(self):
+        original = "see the notes (attched below)"
+        corrected = "see the notes (attached below)"
+        assert strip_trailing_parenthetical(corrected, original) == corrected
+
+    def test_unrelated_tail_still_not_matched(self):
+        # A fragment nothing like the original's ending is still stripped.
+        assert strip_trailing_signoff(
+            "Fixed sentence. Hope this helps!", "Fixd sentence."
+        ) == "Fixed sentence."

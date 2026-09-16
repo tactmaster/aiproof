@@ -1,3 +1,16 @@
+aiproof (0.1.13) unstable; urgency=medium
+
+  * Fix: a user's own closing line ("Is there anythng else or should we
+    close this ticekt") was eaten by the sign-off stripper once its typos
+    were corrected — the corrected form no longer matched the original
+    verbatim, so it read as AI chatter; the proofread then fixed nothing.
+    "Is this the user's own text?" now fuzzy-matches the original's tail
+    (difflib ratio >= 0.8 across candidate lengths), applied to both the
+    sign-off and trailing-parenthetical strippers. New eval canary from
+    the real failing text.
+
+ -- Ed Watson <edmundwatson@gmail.com>  Wed, 16 Sep 2026 16:00:00 +0200
+
 aiproof (0.1.12) unstable; urgency=medium
 
   * First-attempt formatting: the prompt now states the input's exact line

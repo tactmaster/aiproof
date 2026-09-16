@@ -9,6 +9,7 @@ repair prompt — falling back to the untouched original rather than ever losing
 the user's text.
 """
 
+import difflib
 import logging
 import re
 from typing import Callable
@@ -164,14 +165,12 @@ def strip_trailing_parenthetical(text: str, original: str) -> str:
     """Drop a trailing "(No changes needed.)"-style note the model appended
     on the same line. Only parentheticals ABSENT from the original are
     stripped — the user's own "(see attached)" endings survive."""
-    orig_norm = re.sub(r"\s+", " ", original or "")
     result = text
     while True:
         m = _TRAILING_PAREN_RE.search(result)
         if not m:
             return result
-        fragment = re.sub(r"\s+", " ", m.group(0)).strip()
-        if fragment and fragment in orig_norm:
+        if _is_users_own_ending(m.group(0), original):
             return result
         result = result[: m.start()].rstrip()
 
@@ -222,13 +221,34 @@ def unwrap_quotes(text: str, original: str) -> str:
     return text
 
 
+def _is_users_own_ending(fragment: str, original: str) -> bool:
+    """Does this trailing fragment belong to the user's own text? Exact
+    substring is not enough: the user's sign-off may have contained the very
+    typos we just corrected ("Is there anythng else…" -> "Is there anything
+    else…"), so also fuzzy-match against the original's tail."""
+    orig_norm = re.sub(r"\s+", " ", (original or "")).strip().lower()
+    frag = re.sub(r"\s+", " ", fragment or "").strip().lower()
+    if not frag or not orig_norm:
+        return False
+    if frag in orig_norm:
+        return True
+    # Typo'd endings differ in length from their corrected form by a few
+    # chars, so try several tail lengths and take the best alignment.
+    best = max(
+        difflib.SequenceMatcher(None, frag, orig_norm[-length:]).ratio()
+        for length in (len(frag) - 4, len(frag), len(frag) + 6)
+        if length > 0
+    )
+    return best >= 0.8
+
+
 def strip_trailing_signoff(text: str, original: str) -> str:
     """Remove model sign-off chatter from the END of a response — but only
     phrases that are NOT part of the user's own text (emails legitimately end
-    with "Let me know if…", so anything present in the original is kept)."""
+    with "Let me know if…", so anything present in the original — even with
+    now-corrected typos — is kept)."""
     if not text:
         return text
-    orig_norm = re.sub(r"\s+", " ", (original or "")).strip().lower()
     result = text
     changed = True
     while changed:
@@ -237,8 +257,7 @@ def strip_trailing_signoff(text: str, original: str) -> str:
             m = pattern.search(result)
             if not m:
                 continue
-            fragment = re.sub(r"\s+", " ", m.group(0)).strip().lower()
-            if fragment and fragment in orig_norm:
+            if _is_users_own_ending(m.group(0), original):
                 continue  # genuinely the user's words
             result = result[: m.start()].rstrip()
             changed = True

@@ -153,9 +153,11 @@ class FakeLLM:
         self.error = None          # raised instead of returning
         self.primary_error = None  # fires on_fallback, then used_fallback=True
         self.calls = []            # texts received
+        self.cfgs = []             # cfg dicts received (app_setting etc.)
 
     def __call__(self, cfg, text, on_fallback=None, _client_factory=None):
         self.calls.append(text)
+        self.cfgs.append(cfg)
         if self.error is not None:
             raise self.error
         if self.primary_error is not None:
@@ -167,6 +169,15 @@ class FakeLLM:
 
 
 # -- fixtures -----------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def no_focused_window(monkeypatch):
+    """Tests must never read the real focused window: without this they pick
+    up whatever app is in front (VS Code -> 'technical style') and assertions
+    about notifications become machine-dependent. Individual tests override
+    aiproof.orchestrator.appcontext.get_focused_app when they need a match."""
+    monkeypatch.setattr("aiproof.appcontext.get_focused_app", lambda: ("", ""))
 
 
 @pytest.fixture

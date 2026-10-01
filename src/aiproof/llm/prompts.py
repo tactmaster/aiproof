@@ -153,11 +153,16 @@ def _line_note(text: str) -> str:
             f"EXACTLY {count} LINES, EACH LINE CORRECTED IN PLACE.\n")
 
 
+APP_SETTING_LINE = "WHERE THIS TEXT IS BEING WRITTEN: {setting}\n\n"
+
+
 def build_proofread_prompt(text: str, context_words=None,
-                           context_summary=None) -> str:
+                           context_summary=None, app_setting=None) -> str:
     prompt = PROOFREAD_PROMPT.format(text=text, line_note=_line_note(text))
     # Spliced AFTER .format(): learned vocabulary/summaries may contain braces.
     block = build_context_block(context_words, context_summary)
+    if app_setting:
+        block += APP_SETTING_LINE.format(setting=app_setting)
     if not block:
         return prompt
     if _CONSTRAINT_ANCHOR in prompt:

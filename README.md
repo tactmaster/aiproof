@@ -100,6 +100,15 @@ proofread — original, corrected, provider, pipeline path, timing — is
 appended to `~/.local/share/aiproof/history.jsonl` (file mode 0600, local
 only). View with `aiproof history`; it's JSONL, so `jq` works too.
 
+**Per-application profiles** (on by default): the focused window decides the
+register. Slack and WhatsApp keep your lowercase starts, slang and missing
+full stops; Zendesk and email get professional capitalization and
+punctuation; code editors and terminals keep identifiers, flags and paths
+untouched. Unknown apps use the default style. `aiproof app` shows the
+current window and which profile it matched; set `"app_profiles": false` in
+the config to turn it off. Needs the `focused-window-dbus` GNOME extension —
+without it, everything falls back to the default profile.
+
 **Context-aware proofreading** (opt-in, needs history): aiproof learns an
 aggregate profile of what you write — domain vocabulary that must never be
 "corrected" (a word qualifies only after surviving two or more proofreads

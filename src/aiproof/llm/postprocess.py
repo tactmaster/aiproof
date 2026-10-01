@@ -190,6 +190,42 @@ def unwrap_url_brackets(text: str, original: str) -> str:
     return _BRACKETED_URL_RE.sub(repl, text)
 
 
+def _restore_casual_line(corrected: str, original: str) -> str:
+    """One line's worth of casual-register repair."""
+    orig_stripped, corr_stripped = original.strip(), corrected.strip()
+    if not orig_stripped or not corr_stripped:
+        return corrected
+    # A sentence the writer started lowercase stays lowercase.
+    if orig_stripped[0].islower() and corr_stripped[0].isupper():
+        # ...unless the model capitalized the pronoun "I" (or I'll / I've /
+        # I'm / I'd, often typed as "ill"/"ive"), which IS a spelling fix.
+        first_word = corr_stripped.split(maxsplit=1)[0]
+        if not (first_word == "I" or first_word.startswith("I'")):
+            index = corrected.index(corr_stripped[0])
+            corrected = (corrected[:index] + corr_stripped[0].lower()
+                         + corrected[index + 1:])
+            corr_stripped = corrected.strip()
+    # No full stop the writer didn't type.
+    if corr_stripped[-1] in ".!?" and orig_stripped[-1] not in ".!?":
+        corrected = corrected.rstrip()[:-1] + corrected[len(corrected.rstrip()):]
+    return corrected
+
+
+def preserve_casual_style(corrected: str, original: str) -> str:
+    """In chat apps, lowercase sentence starts and missing full stops are the
+    writer's voice, not errors. Small models capitalize and punctuate anyway
+    however the prompt is worded, so repair it deterministically — same
+    philosophy as desemicolon()."""
+    if not corrected or not original:
+        return corrected
+    orig_lines, corr_lines = original.split("\n"), corrected.split("\n")
+    if len(orig_lines) == len(corr_lines):
+        return "\n".join(
+            _restore_casual_line(c, o) for c, o in zip(corr_lines, orig_lines)
+        )
+    return _restore_casual_line(corrected, original)
+
+
 def desemicolon(text: str, original: str) -> str:
     """When the original contains no semicolons, every semicolon in the
     response is a model addition (joining clauses is restyling — our rules

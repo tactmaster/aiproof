@@ -7,7 +7,7 @@ import logging
 import threading
 import time
 
-from . import clipboard, context, history, keystroke
+from . import appcontext, clipboard, context, history, keystroke
 from .llm.client import LLMError, proofread_with_fallback
 from .notify import Notifier
 
@@ -91,6 +91,23 @@ class Orchestrator:
         self.notifier.notify(summary, body)
         return True
 
+    def _detect_app_profile(self) -> None:
+        """Resolve the focused window to a proofreading register. Best-effort:
+        any failure simply means the default profile."""
+        self._app_profile = None
+        try:
+            self._app_profile = appcontext.get_profile(self.cfg)
+        except Exception:
+            log.debug("app profile detection failed", exc_info=True)
+
+    def _cfg_for_run(self) -> dict:
+        """cfg plus this run's app register (consumed by LLMClient)."""
+        profile = getattr(self, "_app_profile", None)
+        if not profile:
+            return self.cfg
+        return dict(self.cfg, app_setting=profile["setting"],
+                    app_casual=profile["casual"])
+
     def _proofread(self, text: str):
         """Returns (corrected, elapsed) or an error string."""
         self.last_path = ""
@@ -120,7 +137,7 @@ class Orchestrator:
 
         try:
             corrected, elapsed, client, used_fb = proofread_with_fallback(
-                self.cfg, text, on_fallback=on_fallback
+                self._cfg_for_run(), text, on_fallback=on_fallback
             )
             self.last_path = client.last_path
             self.used_fallback = used_fb
@@ -153,7 +170,8 @@ class Orchestrator:
         context.schedule_refresh(self.cfg)
 
     def _path_note(self) -> str:
-        note = ""
+        profile = getattr(self, "_app_profile", None)
+        note = f" — {profile['id']} style" if profile else ""
         if self.last_path in ("line-by-line", "segments"):
             note += f" — {self.last_path} mode"
         if self.used_fallback:
@@ -190,6 +208,10 @@ class Orchestrator:
         self._flow_source = "paste"
         saved = None
         try:
+            # Which app is focused — read BEFORE the synthetic keystrokes, and
+            # free in wall-clock terms: it happens during the clipboard
+            # round-trip we already pay for.
+            self._detect_app_profile()
             saved = clipboard.save()
             clipboard.clear()
             # Let the user's hotkey chord clear before typing, then neutralize
@@ -251,6 +273,7 @@ class Orchestrator:
 
     def _clipboard_flow_locked(self, degraded: bool) -> bool:
         self._flow_source = "clipboard"
+        self._detect_app_profile()
         try:
             text = clipboard.get_primary_text()
             if not text or not text.strip():

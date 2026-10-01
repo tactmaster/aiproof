@@ -15,6 +15,7 @@ from .errors import LLMError, TextTooLongError  # noqa: F401
 from .postprocess import (
     enforce_formatting_preservation_ex,
     full_clean,
+    preserve_casual_style,
     looks_like_wrapper_only,
     proofread_line_by_line,
     proofread_segments,
@@ -47,6 +48,12 @@ class LLMClient:
         # Learned domain vocabulary/summary spliced into the prompt; ([], None)
         # unless context_aware is on and a cached profile exists.
         self.context_words, self.context_summary = context.load_words_and_summary(cfg)
+        # Per-application register ("this is a Slack message"), set by the
+        # orchestrator from the focused window before the proofread starts.
+        self.app_setting = cfg.get("app_setting") or None
+        # Chat registers keep lowercase starts / missing full stops;
+        # prompts alone do not hold a 3B model to that.
+        self.app_casual = bool(cfg.get("app_casual"))
         # Which pipeline path produced the last proofread() result:
         # "ok" | "repaired" | "line-by-line" | "segments" | "fallback"
         self.last_path = ""
@@ -64,8 +71,11 @@ class LLMClient:
             text,
             context_words=self.context_words,
             context_summary=self.context_summary,
+            app_setting=self.app_setting,
         ))
         cleaned = full_clean(response, text)
+        if self.app_casual:
+            cleaned = preserve_casual_style(cleaned, text)
         if not cleaned:
             log.warning("model returned an empty response")
             raise LLMError("Model returned an empty response")
@@ -119,11 +129,14 @@ class LLMClient:
                 line,
                 context_words=self.context_words,
                 context_summary=self.context_summary,
+                app_setting=self.app_setting,
             ))
         except LLMError as e:
             log.warning("line correction failed: %s", e)
             return None
         cleaned = full_clean(response, line)
+        if self.app_casual:
+            cleaned = preserve_casual_style(cleaned, line)
         if not cleaned or looks_like_wrapper_only(cleaned, line):
             log.debug("line correction rejected (empty or boilerplate); "
                       "keeping original line")

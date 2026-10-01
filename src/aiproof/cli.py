@@ -46,6 +46,11 @@ def main(argv=None) -> int:
     p_context.add_argument("--clear", action="store_true",
                            help="delete the learned context")
 
+    sub.add_parser(
+        "app",
+        help="show the focused window and which app profile it matches",
+    )
+
     p_history = sub.add_parser(
         "history", help="show saved proofreads (enable in settings first)"
     )
@@ -68,6 +73,8 @@ def main(argv=None) -> int:
         return _cmd_history(args)
     if args.cmd == "context":
         return _cmd_context(args)
+    if args.cmd == "app":
+        return _cmd_app(args)
     if args.cmd == "daemon":
         from .daemon import run_daemon
         return run_daemon()
@@ -148,6 +155,32 @@ def _cmd_proofread() -> int:
     from . import context
     if cfg.get("context_aware") and cfg.get("save_history"):
         context.refresh_if_stale(cfg, min_new_entries=5)
+    return 0
+
+
+def _cmd_app(args) -> int:
+    from . import appcontext, config
+
+    cfg = config.load()
+    wm_class, title = appcontext.get_focused_app()
+    if not wm_class and not title:
+        print("Could not read the focused window — is the "
+              "focused-window-dbus GNOME extension enabled?", file=sys.stderr)
+        print("Without it every proofread uses the default profile.",
+              file=sys.stderr)
+        return 1
+    print(f"Focused window: wm_class={wm_class!r} title={title!r}")
+    if not cfg.get("app_profiles", True):
+        print("App profiles: DISABLED (every app uses the default style)")
+        return 0
+    profile = appcontext.match_profile(wm_class, title)
+    if profile:
+        print(f"Matched profile: {profile['id']}")
+        print(f"  {profile['setting']}")
+    else:
+        print("Matched profile: (none — default proofreading style)")
+    print("\nAvailable profiles: " +
+          ", ".join(p["id"] for p in appcontext.PROFILES))
     return 0
 
 

@@ -1,3 +1,22 @@
+aiproof (0.1.15) unstable; urgency=medium
+
+  * Per-application proofreading profiles: the focused window (via the
+    focused-window-dbus GNOME extension, ~3ms) now selects a register —
+    Slack/WhatsApp keep lowercase starts, slang and missing full stops;
+    Zendesk/email get professional capitalization and punctuation; editors
+    and terminals keep identifiers, flags and paths untouched. Unknown apps
+    behave exactly as before. Toggle with the app_profiles config key;
+    inspect the current window and its match with 'aiproof app'.
+  * Casual registers are also enforced deterministically after the model
+    replies (preserve_casual_style): small models capitalize and add full
+    stops however the prompt is worded, so lowercase starts the writer chose
+    are restored — except the pronoun "I" / "I'll" / "I've".
+  * Notifications name the style used ("Corrected in 2.4s - slack style").
+  * Test isolation fix: flow tests stubbed the focused window, which they
+    previously read live (picking up whatever app was in front).
+
+ -- Ed Watson <edmundwatson@gmail.com>  Thu, 01 Oct 2026 11:30:00 +0200
+
 aiproof (0.1.14) unstable; urgency=medium
 
   * Mechanically convert model-added semicolons to commas when the original

@@ -4,7 +4,7 @@ format="openai" all speak the OpenAI chat-completions dialect and differ only
 in endpoint/model defaults.
 """
 
-API_FORMATS = ("ollama", "openai", "anthropic", "google")
+API_FORMATS = ("ollama", "openai", "anthropic", "google", "claude_cli")
 
 PROVIDERS = {
     "ollama": {
@@ -20,6 +20,15 @@ PROVIDERS = {
         "endpoint": "https://api.openai.com/v1/chat/completions",
         "model": "gpt-4o-mini",
         "needs_key": True,
+    },
+    "claude-cli": {
+        # Shells out to the Claude Code CLI installed on this machine, so it
+        # uses the existing subscription — no API key. Text leaves the device.
+        "display_name": "Claude CLI (local install, your subscription)",
+        "format": "claude_cli",
+        "endpoint": "",  # path to the claude binary; empty = auto-detect
+        "model": "haiku",
+        "needs_key": False,
     },
     "anthropic": {
         "display_name": "Anthropic (Claude)",

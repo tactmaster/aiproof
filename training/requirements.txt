@@ -1,0 +1,14 @@
+# Training/export environment (conda env "aiproof-train", Python 3.12).
+# torch is installed separately from the cu128 index (see training/README.md):
+#   pip install "torch==2.11.*" --index-url https://download.pytorch.org/whl/cu128
+transformers>=4.57
+trl>=0.25
+peft>=0.17
+bitsandbytes>=0.47
+datasets>=3.0
+accelerate>=1.0
+sentencepiece
+protobuf
+numpy
+# GGUF conversion (convert_hf_to_gguf.py from the llama.cpp checkout)
+gguf

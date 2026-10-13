@@ -35,7 +35,11 @@ def main(argv=None) -> int:
 
     sub.add_parser("setup", help="run first-time setup checks in the terminal")
 
-    sub.add_parser("proofread", help="proofread stdin to stdout (debug)")
+    p_proof = sub.add_parser("proofread", help="proofread stdin to stdout (debug)")
+    p_proof.add_argument("--output-mode", choices=["edits", "rewrite"], default=None,
+                         help="override the configured output mode for this run")
+    p_proof.add_argument("--prompt-style", choices=["full", "minimal"], default=None,
+                         help="override the configured prompt style for this run")
 
     p_context = sub.add_parser(
         "context",
@@ -68,7 +72,7 @@ def main(argv=None) -> int:
     )
 
     if args.cmd == "proofread":
-        return _cmd_proofread()
+        return _cmd_proofread(args)
     if args.cmd == "history":
         return _cmd_history(args)
     if args.cmd == "context":
@@ -92,7 +96,7 @@ def main(argv=None) -> int:
     return 2
 
 
-def _cmd_proofread() -> int:
+def _cmd_proofread(args=None) -> int:
     from . import config
     from .llm.client import LLMError, proofread_with_fallback
 
@@ -113,6 +117,10 @@ def _cmd_proofread() -> int:
               "trying fallback…", file=sys.stderr)
 
     cfg = config.load()
+    if getattr(args, "output_mode", None):
+        cfg["output_mode"] = args.output_mode
+    if getattr(args, "prompt_style", None):
+        cfg["prompt_style"] = args.prompt_style
     try:
         corrected, elapsed, client, used_fb = proofread_with_fallback(
             cfg, text, on_fallback=on_fallback
@@ -135,9 +143,10 @@ def _cmd_proofread() -> int:
         sys.stdout.write("\n")
     log.debug("proofread done: path=%s, used_fallback=%s",
               client.last_path, used_fb)
+    note = " (edits→rewrite)" if getattr(client, "last_edits_fallback", False) else ""
     print(
         f"[{client.cfg['provider']}/{client.model} in {elapsed:.1f}s, "
-        f"path={client.last_path}]",
+        f"path={client.last_path}{note}]",
         file=sys.stderr,
     )
     if client.last_path == "fallback":

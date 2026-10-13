@@ -4,6 +4,10 @@ queryLocalProvider/queryRemoteProvider in background/background.js).
 """
 
 import logging
+import os
+import shutil
+import subprocess
+import tempfile
 import time
 from typing import Callable, Optional
 
@@ -23,13 +27,59 @@ from .postprocess import (
 
 # Don't burn one model call per line on huge selections.
 MAX_SALVAGE_LINES = 40
-from .prompts import build_proofread_prompt
+from .edits import apply_edits, looks_like_rewrite, parse_edits
+from .prompts import EDIT_SYSTEM_PROMPT, build_edit_prompt, build_proofread_prompt
 from .providers import get_provider
 
 log = logging.getLogger(__name__)
 
 MAX_OUTPUT_TOKENS = 2000
 TEMPERATURE = 0.1
+# Edit-list mode: deterministic, and the output is bounded by the number of
+# mistakes, not the text length.
+EDITS_TEMPERATURE = 0.0
+EDITS_MAX_OUTPUT_TOKENS = 768
+OUTPUT_MODES = ("rewrite", "edits")
+PROMPT_STYLES = ("full", "minimal")
+
+
+def edits_max_tokens(text: str) -> int:
+    """Token budget for an edit list: ~6 tokens per fix plus headroom. Bounds
+    a model that ignores the format and rewrites everything to seconds
+    (45 chars -> 63 tokens, 330 -> 158, 10k -> 768) instead of 44 s."""
+    return min(EDITS_MAX_OUTPUT_TOKENS, 48 + len(text) // 3)
+
+
+# The Claude Code CLI is usually a per-user install that isn't on a daemon's
+# PATH, so look in the standard spots too.
+_CLAUDE_CLI_PATHS = (
+    "~/.local/bin/claude",
+    "~/.claude/local/claude",
+    "/usr/local/bin/claude",
+)
+
+# Replaces Claude Code's agentic system prompt: we want a text tool, not a
+# coding assistant that might reach for file tools.
+CLAUDE_CLI_SYSTEM = (
+    "You are a text proofreading tool, not a conversational assistant and "
+    "not a coding agent. Follow the instructions in the message exactly and "
+    "output only the resulting text, with no preamble, commentary, or tool use."
+)
+
+
+def find_claude_cli(configured: str = "") -> "str | None":
+    """Path to the Claude Code CLI, or None when it isn't installed."""
+    if configured:
+        path = os.path.expanduser(configured)
+        return path if os.path.isfile(path) and os.access(path, os.X_OK) else None
+    found = shutil.which("claude")
+    if found:
+        return found
+    for candidate in _CLAUDE_CLI_PATHS:
+        path = os.path.expanduser(candidate)
+        if os.path.isfile(path) and os.access(path, os.X_OK):
+            return path
+    return None
 
 
 class LLMClient:
@@ -54,9 +104,26 @@ class LLMClient:
         # Chat registers keep lowercase starts / missing full stops;
         # prompts alone do not hold a 3B model to that.
         self.app_casual = bool(cfg.get("app_casual"))
+        # "edits": the model lists wrong => right pairs that are applied
+        # deterministically (fewer output tokens, layout can't break);
+        # "rewrite": the model returns the whole corrected text.
+        self.output_mode = cfg.get("output_mode") or "rewrite"
+        if self.output_mode not in OUTPUT_MODES:
+            log.warning("unknown output_mode %r; using rewrite", self.output_mode)
+            self.output_mode = "rewrite"
+        # "full": instructions + examples in every request; "minimal": bare
+        # text with EDIT_SYSTEM_PROMPT as the system turn (fine-tuned models).
+        self.prompt_style = cfg.get("prompt_style") or "full"
+        if self.prompt_style not in PROMPT_STYLES:
+            log.warning("unknown prompt_style %r; using full", self.prompt_style)
+            self.prompt_style = "full"
         # Which pipeline path produced the last proofread() result:
         # "ok" | "repaired" | "line-by-line" | "segments" | "fallback"
+        # | "edits" | "edits-partial" (some edits were rejected)
         self.last_path = ""
+        # True when edit mode produced nothing usable and the rewrite prompt
+        # was used instead (visible in the CLI/eval output for tuning).
+        self.last_edits_fallback = False
 
     # -- public API ---------------------------------------------------------
 
@@ -67,12 +134,31 @@ class LLMClient:
                      len(text), self.max_chars)
             raise TextTooLongError(len(text), self.max_chars)
         start = time.monotonic()
-        response = self.query(build_proofread_prompt(
-            text,
-            context_words=self.context_words,
-            context_summary=self.context_summary,
-            app_setting=self.app_setting,
-        ))
+        self.last_edits_fallback = False
+        result = None
+        if self.output_mode == "edits":
+            result = self._proofread_edits(text)
+            if result is None:
+                self.last_edits_fallback = True
+        if result is None:
+            response = self.query(build_proofread_prompt(
+                text,
+                context_words=self.context_words,
+                context_summary=self.context_summary,
+                app_setting=self.app_setting,
+            ))
+            result = self._finish_rewrite(text, response)
+        final, path = result
+        self.last_path = path
+        log.info(
+            "proofread done: path=%s, %d chars, %d lines, %.1fs",
+            path, len(text), text.count("\n") + 1, time.monotonic() - start,
+        )
+        return final, time.monotonic() - start
+
+    def _finish_rewrite(self, text: str, response: str) -> tuple[str, str]:
+        """The full-rewrite pipeline on a model response: cleanup, guards,
+        repair retry, line/segment salvage. Returns (final_text, path)."""
         cleaned = full_clean(response, text)
         if self.app_casual:
             cleaned = preserve_casual_style(cleaned, text)
@@ -114,12 +200,49 @@ class LLMClient:
                 "layout kept breaking but %d lines exceeds the %d-line "
                 "salvage limit; returning original", line_count, MAX_SALVAGE_LINES,
             )
-        self.last_path = path
-        log.info(
-            "proofread done: path=%s, %d chars, %d lines, %.1fs",
-            path, len(text), line_count, time.monotonic() - start,
+        return final, path
+
+    def _proofread_edits(self, text: str):
+        """Edit-list mode. Returns (final_text, path), or None when the model
+        produced nothing usable and the rewrite prompt should be tried."""
+        prompt = build_edit_prompt(
+            text,
+            context_words=self.context_words,
+            context_summary=self.context_summary,
+            app_setting=self.app_setting,
+            style=self.prompt_style,
         )
-        return final, time.monotonic() - start
+        system = EDIT_SYSTEM_PROMPT if self.prompt_style == "minimal" else None
+        response = self.query(prompt, max_tokens=edits_max_tokens(text),
+                              temperature=EDITS_TEMPERATURE, system=system)
+        parsed = parse_edits(response)
+        if not parsed.edits:
+            if parsed.no_changes:
+                log.info("edit mode: model reports no changes")
+                return text, "edits"
+            cleaned = full_clean(response, text)
+            if cleaned and looks_like_rewrite(text, cleaned):
+                log.info("edit mode: model answered with a full rewrite; "
+                         "using it (no second call)")
+                self.last_edits_fallback = True
+                return self._finish_rewrite(text, response)
+            log.info("edit mode: no parsable edits (%d noise lines); "
+                     "falling back to the rewrite prompt", parsed.noise_lines)
+            return None
+        result = apply_edits(text, parsed.edits)
+        for edit, reason in result.rejected:
+            log.info("edit rejected (%s): %r => %r",
+                     reason, edit.wrong[:40], edit.right[:40])
+        if not result.applied:
+            log.info("edit mode: all %d edits rejected; falling back to the "
+                     "rewrite prompt", len(parsed.edits))
+            return None
+        final = result.text
+        if self.app_casual:
+            final = preserve_casual_style(final, text)
+        log.debug("edit mode: applied %d edit(s), rejected %d",
+                  len(result.applied), len(result.rejected))
+        return final, ("edits-partial" if result.rejected else "edits")
 
     def _correct_line(self, line: str) -> str | None:
         """One line through the model + cleanup; None means keep the
@@ -143,9 +266,12 @@ class LLMClient:
             return None
         return cleaned
 
-    def query(self, prompt: str) -> str:
+    def query(self, prompt: str, **options) -> str:
+        """One model call. ``options`` (max_tokens, temperature, system) go
+        to the request builder; omitted or None keeps the defaults."""
+        options = {k: v for k, v in options.items() if v is not None}
         try:
-            return self._dispatch(prompt)
+            return self._dispatch(prompt, **options)
         except requests.ConnectionError as e:
             # Caught first: ConnectTimeout subclasses both ConnectionError and
             # Timeout, and a dead host is "unreachable", not "slow".
@@ -177,23 +303,32 @@ class LLMClient:
 
     # -- request builders ---------------------------------------------------
 
-    def _dispatch(self, prompt: str) -> str:
+    def _dispatch(self, prompt: str, **options) -> str:
         if self.format == "ollama":
-            return self._query_ollama(prompt)
+            return self._query_ollama(self.build_request(prompt, **options))
         if self.format == "openai":
-            return self._query_openai(prompt)
+            return self._query_openai(self.build_request(prompt, **options))
         if self.format == "anthropic":
-            return self._query_anthropic(prompt)
+            return self._query_anthropic(self.build_request(prompt, **options))
         if self.format == "google":
-            return self._query_google(prompt)
+            return self._query_google(lambda: self.build_request(prompt, **options))
+        if self.format == "claude_cli":
+            return self._query_claude_cli(self.build_request(prompt, **options))
         raise LLMError(f"Unknown API format: {self.format}")
 
-    def build_request(self, prompt: str) -> dict:
-        """Request description (url/headers/body) — used by tests and debug."""
+    def build_request(self, prompt: str, *, max_tokens=None, temperature=None,
+                      system=None) -> dict:
+        """Request description (url/headers/body) — used by tests and debug.
+        ``system`` adds a system turn (edit mode with prompt_style=minimal);
+        the model's own Modelfile SYSTEM applies when it is omitted."""
+        if max_tokens is None:
+            max_tokens = MAX_OUTPUT_TOKENS
+        if temperature is None:
+            temperature = TEMPERATURE
         if self.format == "ollama":
             base = self.endpoint.rstrip("/")
             url = base if "/api/" in base else f"{base}/api/generate"
-            return {
+            req = {
                 "url": url,
                 "headers": {},
                 "body": {
@@ -203,25 +338,31 @@ class LLMClient:
                     # Keep the model resident between proofreads — a cold
                     # load costs 9-40s, dwarfing the correction itself.
                     "keep_alive": self.cfg.get("ollama_keep_alive", "30m"),
-                    "options": {"temperature": TEMPERATURE, "num_predict": MAX_OUTPUT_TOKENS},
+                    "options": {"temperature": temperature, "num_predict": max_tokens},
                 },
             }
+            if system:
+                req["body"]["system"] = system
+            return req
         if self.format == "openai":
             headers = {}
             if self.api_key:
                 headers["Authorization"] = f"Bearer {self.api_key}"
+            messages = [{"role": "user", "content": prompt}]
+            if system:
+                messages.insert(0, {"role": "system", "content": system})
             return {
                 "url": self.endpoint,
                 "headers": headers,
                 "body": {
                     "model": self.model,
-                    "messages": [{"role": "user", "content": prompt}],
-                    "temperature": TEMPERATURE,
-                    "max_tokens": MAX_OUTPUT_TOKENS,
+                    "messages": messages,
+                    "temperature": temperature,
+                    "max_tokens": max_tokens,
                 },
             }
         if self.format == "anthropic":
-            return {
+            req = {
                 "url": self.endpoint,
                 "headers": {
                     "x-api-key": self.api_key,
@@ -229,11 +370,14 @@ class LLMClient:
                 },
                 "body": {
                     "model": self.model,
-                    "max_tokens": MAX_OUTPUT_TOKENS,
-                    "temperature": TEMPERATURE,
+                    "max_tokens": max_tokens,
+                    "temperature": temperature,
                     "messages": [{"role": "user", "content": prompt}],
                 },
             }
+            if system:
+                req["body"]["system"] = system
+            return req
         if self.format == "google":
             version = self.cfg.get("google_api_version", "v1beta")
             base = self.endpoint.rstrip("/")
@@ -243,7 +387,7 @@ class LLMClient:
                 if base.endswith(suffix):
                     base = base[: -len(suffix)]
                     break
-            return {
+            req = {
                 "url": f"{base}/{version}/models/{self.model}:generateContent",
                 "headers": {},
                 "params": {"key": self.api_key},
@@ -251,16 +395,74 @@ class LLMClient:
                     "contents": [{"parts": [{"text": prompt}]}],
                     "generationConfig": {
                         "temperature": 0,
-                        "maxOutputTokens": MAX_OUTPUT_TOKENS,
+                        "maxOutputTokens": max_tokens,
                         "candidateCount": 1,
                         "topP": 1,
                         "topK": 1,
                     },
                 },
             }
+            if system:
+                req["body"]["systemInstruction"] = {"parts": [{"text": system}]}
+            return req
+        if self.format == "claude_cli":
+            # --strict-mcp-config skips loading the user's MCP servers, which
+            # measured ~2.7s of the CLI's startup. Temperature/max_tokens are
+            # not exposed by the CLI; the prompt does that work instead.
+            binary = find_claude_cli(self.cfg.get("endpoint") or "")
+            return {
+                "binary": binary,
+                "argv": [
+                    binary or "claude",
+                    "--print",
+                    "--model", self.model,
+                    "--strict-mcp-config",
+                    "--system-prompt", system or CLAUDE_CLI_SYSTEM,
+                ],
+                "stdin": prompt,
+            }
         raise LLMError(f"Unknown API format: {self.format}")
 
     # -- per-format execution ------------------------------------------------
+
+    def _query_claude_cli(self, req: dict) -> str:
+        """Run the locally installed Claude Code CLI in print mode. Uses the
+        machine's existing Claude subscription, so there is no API key — but
+        the text does leave the device."""
+        if not req["binary"]:
+            raise LLMError(
+                "Claude CLI not found. Install Claude Code, or set the "
+                "endpoint to the full path of the 'claude' binary."
+            )
+        try:
+            proc = subprocess.run(
+                req["argv"],
+                input=req["stdin"].encode("utf-8"),
+                capture_output=True,
+                timeout=self.timeout,
+                # Neutral directory: a project CLAUDE.md would otherwise be
+                # pulled into the context of every proofread.
+                cwd=tempfile.gettempdir(),
+            )
+        except subprocess.TimeoutExpired:
+            log.debug("claude CLI timed out after %ss", self.timeout)
+            raise LLMError(f"Claude CLI timed out after {self.timeout}s") from None
+        except OSError as e:
+            raise LLMError(f"Could not run the Claude CLI: {e}") from e
+        if proc.returncode != 0:
+            stderr = proc.stderr.decode("utf-8", "replace").strip()
+            log.warning("claude CLI exited %s: %s", proc.returncode, stderr[:200])
+            hint = ""
+            lowered = stderr.lower()
+            if any(marker in lowered for marker in
+                   ("login", "log in", "logged in", "auth", "api key",
+                    "credential", "subscription")):
+                hint = " — run 'claude' once in a terminal to sign in"
+            raise LLMError(
+                f"Claude CLI failed (exit {proc.returncode}): "
+                f"{stderr[:200] or 'no error output'}{hint}"
+            )
+        return proc.stdout.decode("utf-8", "replace")
 
     def _post(self, req: dict) -> requests.Response:
         # Short connect timeout so an unreachable host fails over to the
@@ -273,13 +475,13 @@ class LLMClient:
             timeout=(5, self.timeout),
         )
 
-    def _query_ollama(self, prompt: str) -> str:
-        resp = self._post(self.build_request(prompt))
+    def _query_ollama(self, req: dict) -> str:
+        resp = self._post(req)
         self._raise_for_status(resp)
         return resp.json().get("response", "")
 
-    def _query_openai(self, prompt: str) -> str:
-        resp = self._post(self.build_request(prompt))
+    def _query_openai(self, req: dict) -> str:
+        resp = self._post(req)
         self._raise_for_status(resp)
         data = resp.json()
         try:
@@ -287,8 +489,8 @@ class LLMClient:
         except (KeyError, IndexError, TypeError):
             raise LLMError(f"Unexpected response shape: {str(data)[:200]}") from None
 
-    def _query_anthropic(self, prompt: str) -> str:
-        resp = self._post(self.build_request(prompt))
+    def _query_anthropic(self, req: dict) -> str:
+        resp = self._post(req)
         self._raise_for_status(resp)
         data = resp.json()
         try:
@@ -296,8 +498,10 @@ class LLMClient:
         except (KeyError, IndexError, TypeError):
             raise LLMError(f"Unexpected response shape: {str(data)[:200]}") from None
 
-    def _query_google(self, prompt: str) -> str:
-        resp = self._post(self.build_request(prompt))
+    def _query_google(self, build_request) -> str:
+        """``build_request`` is a thunk: the v1beta <-> v1 fallback below
+        needs to rebuild the URL after switching versions."""
+        resp = self._post(build_request())
         if resp.status_code == 404:
             # v1beta <-> v1 fallback, persisted when it works
             # (port of background.js:1682-1708).
@@ -305,7 +509,7 @@ class LLMClient:
             other = "v1" if current == "v1beta" else "v1beta"
             log.info("Gemini %s returned 404, retrying with %s", current, other)
             self.cfg["google_api_version"] = other
-            resp = self._post(self.build_request(prompt))
+            resp = self._post(build_request())
             if resp.ok and self.on_config_update:
                 self.on_config_update(google_api_version=other)
         self._raise_for_status(resp)

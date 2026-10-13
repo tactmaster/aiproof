@@ -91,16 +91,27 @@ _SIGNOFF_RES = [
 ]
 
 
+_THINK_BLOCK_RE = re.compile(r"<think>.*?</think>\s*", re.DOTALL)
+_THINK_OPEN_RE = re.compile(r"<think>.*\Z", re.DOTALL)
+
+
+def strip_think_blocks(text: str) -> str:
+    """Reasoning models (qwen3, deepseek-r1, …) emit <think>…</think> blocks
+    before the answer; drop them (and any unclosed opener) entirely."""
+    return _THINK_OPEN_RE.sub("", _THINK_BLOCK_RE.sub("", text))
+
+
+def strip_code_fences(text: str) -> str:
+    """Drop one wrapping ``` fence pair (the opener may name a language)."""
+    text = _FENCE_OPEN.sub("", text, count=1)
+    return _FENCE_CLOSE.sub("", text, count=1)
+
+
 def clean_response(response: str) -> str:
     if not isinstance(response, str):
         return response
 
-    cleaned = response.replace("\r\n", "\n")
-
-    # Reasoning models (qwen3, deepseek-r1, …) emit <think>…</think> blocks
-    # before the answer; drop them (and any unclosed opener) entirely.
-    cleaned = re.sub(r"<think>.*?</think>\s*", "", cleaned, flags=re.DOTALL)
-    cleaned = re.sub(r"<think>.*\Z", "", cleaned, flags=re.DOTALL)
+    cleaned = strip_think_blocks(response.replace("\r\n", "\n"))
 
     for phrase in _WRAPPER_RES:
         cleaned = phrase.sub("", cleaned, count=1)
@@ -112,8 +123,7 @@ def clean_response(response: str) -> str:
     ):
         cleaned = cleaned[1:-1]
 
-    cleaned = _FENCE_OPEN.sub("", cleaned, count=1)
-    cleaned = _FENCE_CLOSE.sub("", cleaned, count=1)
+    cleaned = strip_code_fences(cleaned)
 
     if not cleaned or not cleaned.strip():
         return ""

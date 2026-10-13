@@ -151,5 +151,43 @@
     "must_contain": ["improve", "parameters", "/usr/bin/example-delta-tool"],
     "must_not_contain": ["improce", "paramaters"],
     "bonus_contain": ["parameter you use", "makes sense"]
+  },
+  {
+    "id": "repeated-typo",
+    "category": "edit-list",
+    "input": "I saw teh cat and teh dog in teh garden this morning.",
+    "must_contain": ["the cat", "the dog", "the garden"],
+    "must_not_contain": ["teh"]
+  },
+  {
+    "id": "one-of-two-identical-words",
+    "category": "edit-list",
+    "input": "Their car is parked outside and their going to be late again.",
+    "must_contain": ["Their car", "they're going"]
+  },
+  {
+    "id": "code-arrow-in-text",
+    "category": "edit-list",
+    "input": "The callback x => x + 1 returns teh next value in the sequence.",
+    "must_contain": ["x => x + 1", "the next value"]
+  },
+  {
+    "id": "long-sentence-two-typos",
+    "category": "edit-list",
+    "input": "Before we send the quarterly inventroy report to the customer we should double check the devices in the Oslo lab becuase the counts do not match the dashboard.",
+    "must_contain": ["inventory report", "because the counts"],
+    "must_not_contain": [";"]
+  },
+  {
+    "id": "curly-quotes-kept",
+    "category": "edit-list",
+    "input": "I don’t think it’s teh right aproach for this customer.",
+    "must_contain": ["don’t", "it’s the right approach"]
+  },
+  {
+    "id": "correct-form-elsewhere",
+    "category": "edit-list",
+    "input": "I recieve the emails but you receive the letters and the invoices.",
+    "must_contain": ["I receive the emails", "you receive the letters"]
   }
 ]

@@ -104,7 +104,15 @@ flowchart TD
 
     subgraph LLM["LLM pipeline (per provider attempt)"]
         TL{"len > max_chars?"}
-        Q["query provider"]
+        OM{"output_mode<br/>= edits?"}
+        EQ["query provider<br/>(edit-list prompt)"]
+        PE{"parsable<br/>wrong => right lines?"}
+        NC{"NO CHANGES<br/>sentinel?"}
+        RWS{"answer looks like<br/>a full rewrite?"}
+        AE["apply_edits<br/>(drop unsafe spans)"]
+        AP{"any edit applied?"}
+        PED["path=edits /<br/>edits-partial"]:::done
+        Q["query provider<br/>(rewrite prompt)"]
         FC["full_clean"]
         WO{"empty or<br/>boilerplate-only?"}
         V{"guards pass?<br/>(layout, punctuation,<br/>appended content)"}
@@ -119,7 +127,17 @@ flowchart TD
         XESC["⚠2 non-LLMError transport errors<br/>(bad JSON, SSL) escape:<br/>'Unexpected error', no failover"]:::quirk
     end
     TL -->|"yes"| ETL["TextTooLongError<br/>(never fails over)"]:::err
-    TL -->|"no"| Q
+    TL -->|"no"| OM
+    OM -->|"yes"| EQ --> PE
+    PE -->|"yes"| AE --> AP
+    AP -->|"yes"| PED
+    AP -->|"no (all rejected)"| Q
+    PE -->|"no"| NC
+    NC -->|"yes"| PED
+    NC -->|"no"| RWS
+    RWS -->|"yes (no 2nd call)"| FC
+    RWS -->|"no"| Q
+    OM -->|"no"| Q
     Q --> FC --> WO
     WO -->|"yes"| ELLM["LLMError"]:::err
     WO -->|"no"| V

@@ -2,7 +2,7 @@ import pytest
 
 from aiproof.config import DEFAULTS
 from aiproof.llm.client import LLMClient, TextTooLongError
-from aiproof.llm.providers import PROVIDERS, get_provider
+from aiproof.llm.providers import API_FORMATS, PROVIDERS, get_provider
 
 
 def make_cfg(**over):
@@ -13,9 +13,8 @@ def make_cfg(**over):
 
 class TestRegistry:
     def test_all_formats_known(self):
-        formats = ("ollama", "openai", "anthropic", "google")
         for pid, p in PROVIDERS.items():
-            assert p["format"] in formats, pid
+            assert p["format"] in API_FORMATS, pid
 
     def test_unknown_provider_raises(self):
         with pytest.raises(ValueError):
@@ -101,3 +100,53 @@ class TestLimits:
         client = LLMClient(make_cfg(max_chars=10))
         with pytest.raises(TextTooLongError):
             client.proofread("x" * 11)
+
+
+class TestGenerationOptions:
+    """Edit mode sends its own token budget / temperature / system turn; the
+    default request body must stay byte-identical."""
+
+    def test_ollama_options_and_system(self):
+        req = LLMClient(make_cfg()).build_request(
+            "P", max_tokens=100, temperature=0.0, system="S")
+        assert req["body"]["options"] == {"temperature": 0.0, "num_predict": 100}
+        assert req["body"]["system"] == "S"
+        assert "system" not in LLMClient(make_cfg()).build_request("P")["body"]
+
+    def test_openai_system_message_first(self):
+        cfg = make_cfg(provider="openai",
+                       endpoint="https://api.openai.com/v1/chat/completions",
+                       model="gpt-4o-mini")
+        body = LLMClient(cfg).build_request(
+            "P", max_tokens=100, temperature=0.0, system="S")["body"]
+        assert body["messages"] == [{"role": "system", "content": "S"},
+                                    {"role": "user", "content": "P"}]
+        assert body["max_tokens"] == 100 and body["temperature"] == 0.0
+
+    def test_anthropic_system_field(self):
+        cfg = make_cfg(provider="anthropic",
+                       endpoint="https://api.anthropic.com/v1/messages",
+                       model="claude-3-5-haiku-latest")
+        body = LLMClient(cfg).build_request("P", max_tokens=100, system="S")["body"]
+        assert body["system"] == "S" and body["max_tokens"] == 100
+        assert body["messages"] == [{"role": "user", "content": "P"}]
+
+    def test_google_system_instruction(self):
+        cfg = make_cfg(provider="google",
+                       endpoint="https://generativelanguage.googleapis.com/v1beta",
+                       model="gemini-1.5-flash")
+        body = LLMClient(cfg).build_request("P", max_tokens=100, system="S")["body"]
+        assert body["generationConfig"]["maxOutputTokens"] == 100
+        assert body["systemInstruction"] == {"parts": [{"text": "S"}]}
+
+    def test_query_forwards_only_given_options(self, monkeypatch):
+        client = LLMClient(make_cfg())
+        seen = {}
+
+        def fake_dispatch(prompt, **options):
+            seen.update(prompt=prompt, **options)
+            return "ok"
+
+        monkeypatch.setattr(client, "_dispatch", fake_dispatch)
+        assert client.query("p", max_tokens=5, temperature=None) == "ok"
+        assert seen == {"prompt": "p", "max_tokens": 5}

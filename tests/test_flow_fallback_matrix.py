@@ -203,6 +203,8 @@ def test_repair_non_llm_error_still_degrades(caplog):
 @pytest.mark.parametrize("path,used_fb,expected_summary", [
     ("ok", False, "Corrected in 0.3s"),
     ("repaired", False, "Corrected in 0.3s"),  # repair is invisible by design
+    ("edits", False, "Corrected in 0.3s"),
+    ("edits-partial", False, "Corrected in 0.3s"),  # dropped edits: logs only
     ("line-by-line", False, "Corrected in 0.3s — line-by-line mode"),
     ("segments", False, "Corrected in 0.3s — segments mode"),
     ("ok", True, "Corrected in 0.3s — via fallback local-model"),

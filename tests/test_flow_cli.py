@@ -158,3 +158,25 @@ def test_trigger_daemon_unreachable(gi_stub, capsys, caplog):
     assert "could not reach the daemon (no daemon)" in err
     assert "aiproof daemon" in err
     assert "daemon unreachable over DBus: no daemon" in caplog.text
+
+
+def test_proofread_output_mode_flag_overrides_config(fake_stdin, monkeypatch, capsys):
+    """cli: --output-mode/--prompt-style reach the client config for this run
+    only, and an edits->rewrite fallback is noted in the summary line."""
+    seen = {}
+
+    def fake(cfg, text, on_fallback=None, _client_factory=None):
+        seen.update(cfg)
+        client = SimpleNamespace(cfg={"provider": "ollama"}, model="m",
+                                 last_path="ok", last_edits_fallback=True)
+        return "the text", 0.2, client, False
+
+    monkeypatch.setattr("aiproof.llm.client.proofread_with_fallback", fake)
+    monkeypatch.setattr("aiproof.config.load", lambda: make_cfg())
+    fake_stdin("teh text\n")
+    assert main(["proofread", "--output-mode", "edits",
+                 "--prompt-style", "minimal"]) == 0
+    assert seen["output_mode"] == "edits"
+    assert seen["prompt_style"] == "minimal"
+    assert "(edits→rewrite)" in capsys.readouterr().err
+    assert make_cfg()["output_mode"] == "rewrite"  # default untouched

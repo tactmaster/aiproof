@@ -1,0 +1,18 @@
+# User service template for the llama.cpp sidecar. Install with:
+#   sed "s|@MODEL@|$HOME/.local/share/aiproof/models/aiproof-edit-1.5b-q8_0.gguf|; s|@REPO@|$PWD|" \
+#       training/aiproof-llama-server.service > ~/.config/systemd/user/aiproof-llama-server.service
+#   systemctl --user daemon-reload && systemctl --user enable --now aiproof-llama-server
+# Then in aiproof: provider "llama.cpp server (local)", endpoint
+# http://127.0.0.1:8080/v1/chat/completions, output_mode edits.
+[Unit]
+Description=llama.cpp server for aiproof (local proofreading model)
+After=graphical-session.target
+
+[Service]
+ExecStart=@REPO@/training/serve_llama.sh @MODEL@
+Restart=on-failure
+RestartSec=5
+Nice=5
+
+[Install]
+WantedBy=default.target

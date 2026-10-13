@@ -193,3 +193,98 @@ def build_constrained_prompt(text: str, violations: list[str]) -> str:
 
 def build_repair_prompt(original: str, candidate: str) -> str:
     return REPAIR_PROMPT.format(original=original, candidate=candidate)
+
+
+# -- edit-list output mode -----------------------------------------------------
+#
+# Instead of rewriting the whole text the model lists only the corrections
+# ("wrong => right", one per line); aiproof applies them (llm/edits.py).
+# Output tokens then scale with the number of mistakes, not the length of
+# the text, and the layout cannot break because untouched text is never
+# regenerated.
+
+# One line, used three ways and byte-identical in all of them: the SYSTEM of a
+# fine-tuned Ollama model (training/Modelfile.template), the system message
+# sent with prompt_style="minimal", and the system turn in the training data
+# (training/build_dataset.py imports it from here).
+EDIT_SYSTEM_PROMPT = (
+    "You are a proofreader. Fix only real spelling, grammar, wrong-word and "
+    "capitalization errors; never rephrase, restyle, expand or shorten. "
+    "Reply with one correction per line in the form: wrong => right, where "
+    '"wrong" is copied exactly from the text. If there is nothing to fix, '
+    "reply exactly: NO CHANGES"
+)
+
+# Constant prefix, never .format()ed: with the variable parts (context block,
+# text) at the very end, Ollama's prompt-prefix KV cache makes prompt
+# processing nearly free on every call after the first.
+EDIT_PROMPT_PREFIX = """You are a proofreading assistant. Find the spelling and grammar errors in the
+input text and list ONLY the corrections, one per line, in exactly this form:
+
+wrong => right
+
+RULES:
+1. "wrong" must be copied EXACTLY from the input: same spelling, same
+capitalization, same spacing. "right" is the corrected version of that same span.
+2. Keep each correction as short as possible: the misspelled word, or the few
+words needed to fix the grammar. Never list a whole sentence for one error.
+3. Fix only real errors: misspellings, wrong words (their/they're, to/too,
+our/owe, loose/lose, then/than), broken grammar, and the pronoun "i" => "I".
+Do NOT rephrase, reword, reorder, shorten, expand, or "improve" anything that is
+already correct. If unsure, leave it.
+4. Never change abbreviations or shorthand (prod, repo, asap, back in 20),
+informal words (gonna, wanna, kinda), names, URLs, paths, flags, code
+identifiers, or numbers.
+5. Never add a semicolon, colon, dash, question mark, or exclamation mark that
+the input did not have.
+6. To delete something, include a neighbouring word: the the => the
+To insert something, include the words around it: go to store => went to the store
+7. If the same mistake appears more than once, list it once; it is fixed
+everywhere. If a phrase appears several times and only one should change,
+include enough surrounding words to make it unique.
+8. If there is nothing to fix, output exactly: NO CHANGES
+9. Output ONLY the correction lines (or NO CHANGES). No numbering, no quotes,
+no explanations, nothing else.
+
+EXAMPLES:
+Input: "Hello there\\n\\n• Point one has eror\\n• Point too\\n\\nAnd a paragraf."
+Output:
+eror => error
+Point too => Point two
+paragraf => paragraph
+
+Input: "i think their going to loose the game"
+Output:
+i think => I think
+their => they're
+loose => lose
+
+Input: "I go to store yesterday and buy some milk."
+Output:
+go to store => went to the store
+buy => bought
+
+Input: "gonna push the fix to prod tomorow"
+Output:
+tomorow => tomorrow
+
+Input: "The meeting starts at 9am, we should get there early."
+Output:
+NO CHANGES
+
+Now list the corrections for this text:
+"""
+
+
+def build_edit_prompt(text: str, context_words=None, context_summary=None,
+                      app_setting=None, style: str = "full") -> str:
+    """The edit-list prompt. ``style="minimal"`` sends the bare text: for a
+    model fine-tuned on this task, whose instructions live in its SYSTEM
+    prompt (EDIT_SYSTEM_PROMPT) rather than in every request."""
+    if style == "minimal":
+        return text
+    block = build_context_block(context_words, context_summary)
+    if app_setting:
+        block += APP_SETTING_LINE.format(setting=app_setting)
+    # Concatenation, not .format(): the text may contain braces.
+    return EDIT_PROMPT_PREFIX + block + 'Input: "' + text + '"\nOutput:'

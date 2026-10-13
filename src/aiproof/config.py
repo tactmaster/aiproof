@@ -39,6 +39,14 @@ DEFAULTS = {
     # How long Ollama keeps the model loaded after a request (its own default
     # evicts after 5 minutes -> 9-40s cold reload on the next proofread).
     "ollama_keep_alive": "30m",
+    # "rewrite": the model returns the whole corrected text. "edits": it lists
+    # only "wrong => right" pairs that aiproof applies itself — far fewer
+    # output tokens on small local models, and the layout cannot break.
+    "output_mode": "rewrite",
+    # "full": instructions + examples in every request. "minimal": bare text
+    # plus a one-line system prompt, for a model fine-tuned on the edit-list
+    # task (see training/README.md).
+    "prompt_style": "full",
     # Adapt the prompt to the focused app (Slack stays casual, Zendesk gets
     # professional capitalization, editors keep identifiers alone). Needs the
     # focused-window-dbus GNOME extension; falls back to the default profile.

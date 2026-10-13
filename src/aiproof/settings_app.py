@@ -79,6 +79,11 @@ class SettingsWindow(Adw.PreferencesWindow):
         self.api_key_row.connect("apply", self._on_api_key_apply)
         group.add(self.api_key_row)
 
+        # Whether the selected provider keeps text on this machine, and for
+        # the Claude CLI whether the binary is actually installed.
+        self.provider_note_row = Adw.ActionRow(title="", subtitle="")
+        group.add(self.provider_note_row)
+
         page.add(group)
 
         fb_group = Adw.PreferencesGroup(
@@ -128,6 +133,32 @@ class SettingsWindow(Adw.PreferencesWindow):
 
         return page
 
+    def _update_provider_note(self, provider_id: str) -> None:
+        """Say plainly where the text goes, and flag a missing Claude CLI."""
+        from .llm.client import find_claude_cli
+
+        provider = PROVIDERS.get(provider_id, {})
+        fmt = provider.get("format", "")
+        endpoint = self.endpoint_row.get_text().strip()
+        if fmt == "claude_cli":
+            binary = find_claude_cli(endpoint)
+            if binary:
+                title = "Using the Claude Code CLI on this machine"
+                subtitle = (f"{binary} — no API key needed (your Claude "
+                            "subscription). Text is sent to Anthropic.")
+            else:
+                title = "⚠ Claude CLI not found"
+                subtitle = ("Install Claude Code, or put the full path to the "
+                            "'claude' binary in the endpoint field above.")
+        elif fmt == "ollama" or "127.0.0.1" in endpoint or "localhost" in endpoint:
+            title = "Local provider"
+            subtitle = "Text stays on this machine."
+        else:
+            title = "Cloud provider"
+            subtitle = "Text is sent to the provider over the internet."
+        self.provider_note_row.set_title(title)
+        self.provider_note_row.set_subtitle(subtitle)
+
     def _on_provider_changed(self, row, _pspec) -> None:
         if self._loading:
             return
@@ -154,6 +185,7 @@ class SettingsWindow(Adw.PreferencesWindow):
             provider=pid, endpoint=endpoint, model=model, provider_overrides=overrides
         )
         self.cfg = config.load()
+        self._update_provider_note(pid)
 
     def _save_text_row(self, _row) -> None:
         if self._loading:
@@ -295,6 +327,32 @@ class SettingsWindow(Adw.PreferencesWindow):
         flow.add(self.delay_row)
         page.add(flow)
 
+        output = Adw.PreferencesGroup(
+            title="Correction output",
+            description="How the model reports corrections. The edit list is "
+                        "much faster on small local models and can never "
+                        "break line breaks or bullets.",
+        )
+        self.output_mode_row = Adw.ComboRow(
+            title="Model output",
+            model=Gtk.StringList.new(
+                ["Full rewrite of the text", "Edit list (wrong => right)"]
+            ),
+        )
+        self.output_mode_row.connect("notify::selected", self._save_output_mode)
+        output.add(self.output_mode_row)
+        self.prompt_style_row = Adw.ComboRow(
+            title="Prompt style",
+            subtitle="Minimal: bare text plus a one-line system prompt, for a "
+                     "model fine-tuned on the edit-list task",
+            model=Gtk.StringList.new(
+                ["Full instructions", "Minimal (fine-tuned model)"]
+            ),
+        )
+        self.prompt_style_row.connect("notify::selected", self._save_output_mode)
+        output.add(self.prompt_style_row)
+        page.add(output)
+
         startup = Adw.PreferencesGroup(title="Startup")
         self.autostart_row = Adw.SwitchRow(
             title="Start automatically at login",
@@ -343,6 +401,16 @@ class SettingsWindow(Adw.PreferencesWindow):
             paste_mode="clipboard-only" if self.paste_mode_row.get_selected() == 1
             else "auto",
             restore_delay_ms=int(self.delay_row.get_value()),
+        )
+
+    def _save_output_mode(self, *_args) -> None:
+        if self._loading:
+            return
+        config.update(
+            output_mode="edits" if self.output_mode_row.get_selected() == 1
+            else "rewrite",
+            prompt_style="minimal" if self.prompt_style_row.get_selected() == 1
+            else "full",
         )
 
     def _save_history_toggle(self, *_args) -> None:
@@ -414,12 +482,19 @@ class SettingsWindow(Adw.PreferencesWindow):
         self.endpoint_row.set_text(cfg["endpoint"] or "")
         self.model_row.set_text(cfg["model"] or "")
         self.api_key_row.set_text(secrets.get_api_key(cfg["provider"]) or "")
+        self._update_provider_note(cfg["provider"])
         self.hotkey_row.set_text(cfg["hotkey"])
         self.hotkey_clip_row.set_text(cfg["hotkey_clipboard"])
         self.paste_mode_row.set_selected(
             1 if cfg.get("paste_mode") == "clipboard-only" else 0
         )
         self.delay_row.set_value(cfg.get("restore_delay_ms", 500))
+        self.output_mode_row.set_selected(
+            1 if cfg.get("output_mode") == "edits" else 0
+        )
+        self.prompt_style_row.set_selected(
+            1 if cfg.get("prompt_style") == "minimal" else 0
+        )
         self.autostart_row.set_active(bool(cfg.get("autostart", True)))
         self.history_row.set_active(bool(cfg.get("save_history", False)))
         self.context_row.set_active(bool(cfg.get("context_aware", False)))

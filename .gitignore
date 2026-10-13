@@ -11,3 +11,15 @@ debian/debhelper-build-stamp
 debian/*.substvars
 .pytest_cache/
 debian/*.debhelper
+
+# Training pipeline (training/): Ed's history-derived data, checkpoints and
+# exported models never leave the machine. Tooling only is committed.
+training/data/
+training/runs/
+training/**/*.jsonl
+*.gguf
+*.safetensors
+openvino_model.*
+
+# Eval runner --json outputs (build/ is wiped by the deb build)
+evals/results/

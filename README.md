@@ -100,6 +100,13 @@ proofread — original, corrected, provider, pipeline path, timing — is
 appended to `~/.local/share/aiproof/history.jsonl` (file mode 0600, local
 only). View with `aiproof history`; it's JSONL, so `jq` works too.
 
+**Claude CLI backend**: if Claude Code is installed on the machine, select
+the `claude-cli` provider (default model `haiku`) to proofread with your
+existing Claude subscription — no API key. It scores 27/28 on the eval suite
+versus 23/28 for local qwen2.5:3b, at a median 3.1s versus 0.7s. Note the
+text is sent to Anthropic, unlike the local Ollama default; it also works
+well as the *fallback* provider when a local model is unreachable.
+
 **Per-application profiles** (on by default): the focused window decides the
 register. Slack and WhatsApp keep your lowercase starts, slang and missing
 full stops; Zendesk and email get professional capitalization and
@@ -119,6 +126,15 @@ slowed down, and no per-run examples from your past are ever included.
 Inspect or reset it any time with `aiproof context` / `--refresh` /
 `--clear`.
 
+**Correction output** (settings → Behavior): `"output_mode": "rewrite"`
+(default) has the model return the whole corrected text; `"edits"` has it
+return only `wrong => right` lines that aiproof applies and verifies itself —
+much faster on small local models, and the layout cannot break.
+`"prompt_style": "minimal"` drops the long instruction prompt in favour of a
+one-line system prompt, for a model fine-tuned on the edit-list task (see
+[training/README.md](training/README.md)). `aiproof proofread
+--output-mode edits --prompt-style minimal` tries either per run.
+
 ## Tests
 
 ```sh
@@ -132,11 +148,40 @@ The flow tests drive every route in [docs/flow.md](docs/flow.md) with the
 LLM, clipboard, and keystrokes mocked, assert that each branch logs its
 decision, and write the captured logs per route to `build/flow-report.md`.
 
-`evals/cases.json` holds 17 realistic proofreading cases (spelling, homophones,
+`evals/cases.json` holds 28 realistic proofreading cases (spelling, homophones,
 must-stay-unchanged texts, formatting, verbatim technical content, real
-emails); the runner checks structure automatically (line counts, bullets, no
-added punctuation, quote wrapping) plus per-case content expectations. Use it
-whenever you tweak the prompt or consider a different model.
+emails, edit-list edge cases); the runner checks structure automatically (line
+counts, bullets, no added punctuation, quote wrapping) plus per-case content
+expectations, and prints the pipeline path and median / p90 latency bucketed
+by input length. Use it whenever you tweak the prompt or consider a different
+model:
+
+```sh
+make eval EVAL_ARGS="--model qwen2.5:3b --output-mode edits --warmup --json evals/results/eval.json"
+make eval-private              # your own hand-reviewed gold set (see training/README.md)
+make bench BENCH_ARGS="qwen2.5:3b qwen2.5:1.5b"   # raw tokens/s per Ollama model
+```
+
+## Output modes and a custom model
+
+By default the model rewrites the whole text and aiproof verifies the layout
+afterwards. With `"output_mode": "edits"` the model returns only
+`wrong => right` lines that aiproof applies itself — output tokens then
+scale with the number of mistakes instead of the text length, and line
+breaks and bullets cannot break. Stock chat models follow that format
+unevenly, so [training/README.md](training/README.md) describes how to
+fine-tune a small local model on it from your own proofread history (data
+and models stay on your machine) and run it with `"prompt_style": "minimal"`.
+
+**Serving tip (measured on an RTX 500 laptop):** Ollama adds roughly half a
+second of scheduling overhead to every request and reloads an evicted model
+from disk in 10-35 s. The same `qwen2.5:3b` weights served by llama.cpp's
+`llama-server` answered the eval suite with a 0.4 s median instead of
+1.1-1.5 s, and a fine-tuned 0.5B/1.5B edit-list model in 0.06-0.13 s (see
+[training/README.md](training/README.md#results-so-far-rtx-500-ada-4-gb-laptop-28-public-eval-cases)). `training/serve_llama.sh <model.gguf>` starts one (an Ollama blob
+works as the GGUF), `training/aiproof-llama-server.service` is a user-unit
+template, and aiproof talks to it through the *llama.cpp server* provider
+preset.
 
 ## License
 

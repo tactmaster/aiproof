@@ -1,13 +1,8 @@
-aiproof (0.1.21) unstable; urgency=medium
+aiproof (0.1.22) unstable; urgency=medium
 
-  * Changing the fallback provider now resets its endpoint and model to
-    that provider's defaults, the way the primary provider already did.
-    Without it the fields kept the previous provider's values and produced
-    pairings that cannot work (claude-cli with an Ollama URL and model),
-    which failed only later, when the fallback was actually needed.
-  * find_claude_cli() ignores a URL in the endpoint field instead of
-    treating it as a binary path, so a stale endpoint degrades to
-    auto-detection rather than "Claude CLI not found".
+  * The settings window no longer saves the API key noisily on focus-leave
+    or close: showing a toast there can pull a backgrounded window to the
+    front. Pressing Enter or the tick button still confirms with a toast.
 
- -- Ed Watson <edmundwatson@gmail.com>  Wed, 14 Oct 2026 22:10:00 +0200
+ -- Ed Watson <edmundwatson@gmail.com>  Thu, 15 Oct 2026 08:30:00 +0200
 

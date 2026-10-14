@@ -202,24 +202,29 @@ class SettingsWindow(Adw.PreferencesWindow):
 
     def _flush_api_key(self, *_args) -> bool:
         """Commit a typed-but-not-applied key. Returns False so it can also
-        serve as a ::close-request handler (False = let the window close)."""
+        serve as a ::close-request handler (False = let the window close).
+
+        Saves quietly: this fires on focus-leave and on close, and raising a
+        toast then can pull a backgrounded window back to the front."""
         if self._loading:
             return False
         pid = PROVIDER_IDS[self.provider_row.get_selected()]
         typed = self.api_key_row.get_text().strip()
         if typed and typed != (secrets.get_api_key(pid) or ""):
-            self._on_api_key_apply(self.api_key_row)
+            self._on_api_key_apply(self.api_key_row, quiet=True)
         return False
 
-    def _on_api_key_apply(self, row) -> None:
+    def _on_api_key_apply(self, row, quiet: bool = False) -> None:
         pid = PROVIDER_IDS[self.provider_row.get_selected()]
         key = row.get_text().strip()
         if secrets.set_api_key(pid, key):
             config.update(api_key_plaintext=None)
-            self._flash(row, "Saved to keyring")
+            if not quiet:
+                self._flash(row, "Saved to keyring")
         else:
             config.update(api_key_plaintext=key or None)
-            self._flash(row, "Keyring unavailable — saved as plain text")
+            if not quiet:
+                self._flash(row, "Keyring unavailable — saved as plain text")
 
     def _on_fb_provider_changed(self, *_args) -> None:
         """Repopulate the fallback endpoint/model with the new provider's

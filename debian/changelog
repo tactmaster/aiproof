@@ -1,18 +1,14 @@
-aiproof (0.1.17) unstable; urgency=medium
+aiproof (0.1.18) unstable; urgency=medium
 
-  * New backend: the Claude Code CLI installed on this machine
-    (provider "claude-cli", default model haiku). It uses the existing
-    Claude subscription, so there is no API key to manage — the prompt goes
-    in on stdin, the corrected text comes back on stdout. --strict-mcp-config
-    skips loading the user's MCP servers, which measured ~2.7s of the CLI's
-    ~5s startup; the call runs in a neutral cwd so no project CLAUDE.md is
-    pulled into a proofread.
-  * Eval on the 28-case suite: 27/28 passed with every case taking the
-    first-attempt path (no repair or salvage calls), median 3.06s. Local
-    qwen2.5:3b scores 23/28 at a median of 0.74s — so the CLI buys accuracy
-    for latency, and makes a good fallback provider when Ollama is away.
-  * Settings now states plainly whether the selected provider keeps text on
-    this machine, and warns when the Claude CLI is not installed.
+  * clipboard.save() now reads text with a single wl-paste call instead of
+    asking --list-types first: measured 1192 ms -> 161 ms per proofread on a
+    busy desktop, where each wl-paste spawn costs 200-600 ms. The type
+    listing is only consulted when the text read fails (image or empty).
+  * The paste flow logs per-step timings at DEBUG (app-detect,
+    clipboard-save, clipboard-clear, settle+ctrl-c, poll-for-copy,
+    clipboard-set, ctrl-v, restore-clipboard). Measuring real runs showed
+    the capture/paste plumbing costing ~2.5s against a ~2.8s model call, so
+    it needed to be as visible in the log as the model time already was.
 
- -- Ed Watson <edmundwatson@gmail.com>  Tue, 13 Oct 2026 12:00:00 +0200
+ -- Ed Watson <edmundwatson@gmail.com>  Wed, 14 Oct 2026 09:30:00 +0200
 

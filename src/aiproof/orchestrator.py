@@ -204,6 +204,15 @@ class Orchestrator:
             f"“{snippet}” is clean.",
         )
 
+    def _step(self, label: str, start: float) -> float:
+        """Log how long one capture/paste step took and return a new mark.
+        The paste flow's fixed cost (subprocess spawns plus settle delays)
+        measured ~2.5s, which is comparable to the model call itself, so it
+        needs to be as visible in the log as the model time is."""
+        now = time.monotonic()
+        log.debug("step %-18s %5.0f ms", label, (now - start) * 1000)
+        return now
+
     def _paste_flow_locked(self) -> bool:
         self._flow_source = "paste"
         saved = None
@@ -211,17 +220,23 @@ class Orchestrator:
             # Which app is focused — read BEFORE the synthetic keystrokes, and
             # free in wall-clock terms: it happens during the clipboard
             # round-trip we already pay for.
+            mark = time.monotonic()
             self._detect_app_profile()
+            mark = self._step("app-detect", mark)
             saved = clipboard.save()
+            mark = self._step("clipboard-save", mark)
             clipboard.clear()
+            mark = self._step("clipboard-clear", mark)
             # Let the user's hotkey chord clear before typing, then neutralize
             # any modifiers still physically held.
             time.sleep(0.2)
             keystroke.release_modifiers()
             time.sleep(0.05)
             keystroke.ctrl_c()
+            mark = self._step("settle+ctrl-c", mark)
 
             text = clipboard.poll_for_text(timeout=1.5)
+            mark = self._step("poll-for-copy", mark)
             if text is None:
                 log.info("clipboard still empty after ctrl+c; retrying once")
                 keystroke.release_modifiers()
@@ -250,14 +265,18 @@ class Orchestrator:
                 clipboard.restore(saved)
                 return self._report_unchanged(elapsed, text)
 
+            mark = time.monotonic()
             clipboard.set_text(corrected)
+            mark = self._step("clipboard-set", mark)
             time.sleep(0.1)
             keystroke.release_modifiers()
             keystroke.ctrl_v()
+            mark = self._step("ctrl-v", mark)
 
             # Give the target app time to read the clipboard before restoring.
             time.sleep(self.cfg.get("restore_delay_ms", 500) / 1000)
             clipboard.restore(saved)
+            mark = self._step("restore-clipboard", mark)
             log.info("correction pasted in place: %d -> %d chars%s",
                      len(text), len(corrected), self._path_note())
             return self._done(

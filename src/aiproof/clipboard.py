@@ -61,17 +61,25 @@ def _has_text_type(types: list[str]) -> bool:
 
 
 def save() -> ClipboardState:
-    """Snapshot the clipboard (text or a single image) for later restore."""
+    """Snapshot the clipboard (text or a single image) for later restore.
+
+    Text is tried first with a single wl-paste call. Each wl-paste spawn
+    costs 200-600 ms on a busy desktop, and asking --list-types first made
+    every save pay for two of them; the clipboard holds text almost every
+    time, so the type listing is now only consulted when the text read
+    fails (image, or genuinely empty)."""
+    try:
+        proc = _run(["wl-paste", "--no-newline", "--type", "text"])
+        if proc.returncode == 0 and proc.stdout:
+            return ClipboardState("text", "text/plain;charset=utf-8", proc.stdout)
+    except subprocess.TimeoutExpired:
+        return ClipboardState("empty")
+
     types = list_types()
     if not types:
         return ClipboardState("empty")
     if _has_text_type(types):
-        try:
-            proc = _run(["wl-paste", "--no-newline", "--type", "text"])
-            if proc.returncode == 0:
-                return ClipboardState("text", "text/plain;charset=utf-8", proc.stdout)
-        except subprocess.TimeoutExpired:
-            pass
+        # Text was advertised but the read came back empty: nothing to keep.
         return ClipboardState("empty")
     image_mime = next((t for t in types if t.startswith("image/")), None)
     if image_mime:

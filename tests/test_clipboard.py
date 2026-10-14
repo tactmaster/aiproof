@@ -30,6 +30,10 @@ class TestSave:
         def fake_run(args, input_bytes=None):
             if "--list-types" in args:
                 return completed(stdout=b"image/png\n")
+            # Real wl-paste fails the text read when the clipboard holds an
+            # image; save() only then falls back to listing types.
+            if "text" in args:
+                return completed(returncode=1)
             return completed(stdout=b"\x89PNG...")
 
         with mock.patch.object(clipboard, "_run", side_effect=fake_run):
@@ -79,3 +83,30 @@ class TestPoll:
             mock.patch.object(clipboard, "list_types", return_value=[]),
         ):
             assert clipboard.poll_for_text(timeout=0.25, interval=0.05) is None
+
+
+class TestSaveSpawnCount:
+    """save() runs on every hotkey press and each wl-paste spawn costs
+    200-600 ms on a busy desktop, so the common path must stay at one."""
+
+    def test_text_clipboard_uses_a_single_spawn(self):
+        calls = []
+
+        def fake_run(args, input_bytes=None):
+            calls.append(args)
+            return completed(stdout=b"hello")
+
+        with mock.patch.object(clipboard, "_run", side_effect=fake_run):
+            state = clipboard.save()
+        assert state.kind == "text" and state.data == b"hello"
+        assert len(calls) == 1, f"expected 1 wl-paste spawn, got {calls}"
+        assert "--list-types" not in calls[0]
+
+    def test_empty_clipboard_falls_back_to_listing(self):
+        def fake_run(args, input_bytes=None):
+            if "--list-types" in args:
+                return completed(returncode=1)
+            return completed(returncode=1)
+
+        with mock.patch.object(clipboard, "_run", side_effect=fake_run):
+            assert clipboard.save().kind == "empty"

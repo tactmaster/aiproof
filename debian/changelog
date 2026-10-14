@@ -1,14 +1,15 @@
-aiproof (0.1.18) unstable; urgency=medium
+aiproof (0.1.19) unstable; urgency=medium
 
-  * clipboard.save() now reads text with a single wl-paste call instead of
-    asking --list-types first: measured 1192 ms -> 161 ms per proofread on a
-    busy desktop, where each wl-paste spawn costs 200-600 ms. The type
-    listing is only consulted when the text read fails (image or empty).
-  * The paste flow logs per-step timings at DEBUG (app-detect,
-    clipboard-save, clipboard-clear, settle+ctrl-c, poll-for-copy,
-    clipboard-set, ctrl-v, restore-clipboard). Measuring real runs showed
-    the capture/paste plumbing costing ~2.5s against a ~2.8s model call, so
-    it needed to be as visible in the log as the model time already was.
+  * OpenAI-compatible endpoints accept a base URL again. Local servers
+    (Lemonade, LM Studio, vLLM, LiteLLM, llama.cpp) document a base like
+    http://host:8020/v1, but the request used the configured endpoint
+    verbatim and POSTed to /v1 itself, which answers 404. Both the base and
+    the full .../chat/completions form now work, matching the leniency the
+    Ollama branch already had.
+  * "List" works for OpenAI-compatible providers, not just Ollama: they all
+    expose /v1/models. A 401/403 now says to set the provider's API key
+    instead of surfacing a raw HTTP error. Formats with no listing API say
+    so plainly.
 
- -- Ed Watson <edmundwatson@gmail.com>  Wed, 14 Oct 2026 09:30:00 +0200
+ -- Ed Watson <edmundwatson@gmail.com>  Wed, 14 Oct 2026 20:45:00 +0200
 

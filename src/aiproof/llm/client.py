@@ -5,6 +5,7 @@ queryLocalProvider/queryRemoteProvider in background/background.js).
 
 import logging
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -65,6 +66,29 @@ CLAUDE_CLI_SYSTEM = (
     "not a coding agent. Follow the instructions in the message exactly and "
     "output only the resulting text, with no preamble, commentary, or tool use."
 )
+
+
+def openai_chat_url(endpoint: str) -> str:
+    """Full chat-completions URL for an OpenAI-compatible endpoint.
+
+    Local servers (Lemonade, LM Studio, llama.cpp, vLLM, LiteLLM) document a
+    *base* URL like http://host:8020/v1, and pasting that in used to POST
+    straight to /v1 and get a 404. Accept either form, the way the Ollama
+    branch already accepts a bare host."""
+    base = endpoint.rstrip("/")
+    if not base:
+        return base
+    if base.endswith("/chat/completions"):
+        return base
+    if re.search(r"/v\d+(beta)?$", base):      # .../v1, .../v1beta
+        return base + "/chat/completions"
+    return base + "/v1/chat/completions"
+
+
+def openai_models_url(endpoint: str) -> str:
+    """The /models listing URL that pairs with an OpenAI-compatible endpoint."""
+    chat = openai_chat_url(endpoint)
+    return chat[: -len("/chat/completions")] + "/models"
 
 
 def find_claude_cli(configured: str = "") -> "str | None":
@@ -293,13 +317,31 @@ class LLMClient:
             self.timeout = old_timeout
 
     def list_models(self) -> list[str]:
-        """Model listing (Ollama only)."""
-        if self.format != "ollama":
-            raise LLMError("Model listing is only supported for Ollama")
-        base = self.endpoint.rstrip("/")
-        resp = requests.get(f"{base}/api/tags", timeout=10)
-        resp.raise_for_status()
-        return [m["name"] for m in resp.json().get("models", [])]
+        """Available model names, for Ollama and any OpenAI-compatible server
+        (they all expose /v1/models). Other formats have no listing API."""
+        if self.format == "ollama":
+            base = self.endpoint.rstrip("/")
+            resp = requests.get(f"{base}/api/tags", timeout=10)
+            resp.raise_for_status()
+            return [m["name"] for m in resp.json().get("models", [])]
+        if self.format == "openai":
+            headers = {}
+            if self.api_key:
+                headers["Authorization"] = f"Bearer {self.api_key}"
+            resp = requests.get(openai_models_url(self.endpoint),
+                                headers=headers, timeout=10)
+            if resp.status_code in (401, 403):
+                raise LLMError(
+                    "The server rejected the request (HTTP "
+                    f"{resp.status_code}) — set this provider's API key."
+                )
+            resp.raise_for_status()
+            data = resp.json()
+            models = data.get("data", data if isinstance(data, list) else [])
+            return [m.get("id") or m.get("name") for m in models if isinstance(m, dict)]
+        raise LLMError(
+            f"Listing models is not supported for {self.format} providers"
+        )
 
     # -- request builders ---------------------------------------------------
 
@@ -352,7 +394,7 @@ class LLMClient:
             if system:
                 messages.insert(0, {"role": "system", "content": system})
             return {
-                "url": self.endpoint,
+                "url": openai_chat_url(self.endpoint),
                 "headers": headers,
                 "body": {
                     "model": self.model,

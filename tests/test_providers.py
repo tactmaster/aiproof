@@ -150,3 +150,79 @@ class TestGenerationOptions:
         monkeypatch.setattr(client, "_dispatch", fake_dispatch)
         assert client.query("p", max_tokens=5, temperature=None) == "ok"
         assert seen == {"prompt": "p", "max_tokens": 5}
+
+
+class TestOpenAIEndpointNormalization:
+    """Local OpenAI-compatible servers (Lemonade, LM Studio, vLLM, LiteLLM)
+    document a *base* URL like http://host:8020/v1. Pasting that in used to
+    POST to /v1 itself and return 404."""
+
+    @pytest.mark.parametrize("given,expected", [
+        ("http://host:8020/v1", "http://host:8020/v1/chat/completions"),
+        ("http://host:8020/v1/", "http://host:8020/v1/chat/completions"),
+        ("http://host:8020", "http://host:8020/v1/chat/completions"),
+        ("http://host:8020/v1/chat/completions",
+         "http://host:8020/v1/chat/completions"),
+        ("https://api.openai.com/v1/chat/completions",
+         "https://api.openai.com/v1/chat/completions"),
+    ])
+    def test_chat_url(self, given, expected):
+        from aiproof.llm.client import openai_chat_url
+        assert openai_chat_url(given) == expected
+
+    def test_models_url_pairs_with_chat_url(self):
+        from aiproof.llm.client import openai_models_url
+        assert openai_models_url("http://host:8020/v1") == \
+            "http://host:8020/v1/models"
+        assert openai_models_url("http://host:8020/v1/chat/completions") == \
+            "http://host:8020/v1/models"
+
+    def test_request_uses_the_normalized_url(self):
+        cfg = make_cfg(provider="openai", endpoint="http://host:8020/v1",
+                       model="Qwen3-4B")
+        req = LLMClient(cfg).build_request("PROMPT")
+        assert req["url"] == "http://host:8020/v1/chat/completions"
+
+
+class TestOpenAIModelListing:
+    def _client(self, monkeypatch, payload, status=200):
+        from aiproof.llm import client as client_mod
+
+        class Resp:
+            status_code = status
+            def json(self): return payload
+            def raise_for_status(self):
+                if status >= 400:
+                    raise AssertionError("should have been handled")
+
+        captured = {}
+
+        def fake_get(url, headers=None, timeout=None):
+            captured["url"] = url
+            captured["headers"] = headers or {}
+            return Resp()
+
+        monkeypatch.setattr(client_mod.requests, "get", fake_get)
+        self.captured = captured
+        return LLMClient(make_cfg(provider="openai",
+                                  endpoint="http://host:8020/v1"),
+                         api_key="secret-key")
+
+    def test_lists_openai_compatible_models(self, monkeypatch):
+        client = self._client(monkeypatch, {"data": [{"id": "Qwen3-4B"},
+                                                     {"id": "llama-3"}]})
+        assert client.list_models() == ["Qwen3-4B", "llama-3"]
+        assert self.captured["url"] == "http://host:8020/v1/models"
+        assert self.captured["headers"]["Authorization"] == "Bearer secret-key"
+
+    def test_auth_failure_says_to_set_the_key(self, monkeypatch):
+        from aiproof.llm.errors import LLMError
+        client = self._client(monkeypatch, {}, status=401)
+        with pytest.raises(LLMError, match="API key"):
+            client.list_models()
+
+    def test_unsupported_format_is_explicit(self):
+        from aiproof.llm.errors import LLMError
+        client = LLMClient(make_cfg(provider="anthropic"))
+        with pytest.raises(LLMError, match="not supported"):
+            client.list_models()

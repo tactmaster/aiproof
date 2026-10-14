@@ -150,3 +150,16 @@ class TestFallbackIntegration:
             cfg, "teh text", _client_factory=factory)
         assert used_fb is True
         assert client.cfg["provider"] == "claude-cli"
+
+
+class TestConfigResilience:
+    """A fallback entry can carry a stale endpoint from a previous provider;
+    a URL is never a binary path, so auto-detection should still win."""
+
+    def test_url_endpoint_falls_back_to_autodetect(self, monkeypatch, fake_binary):
+        monkeypatch.setattr("aiproof.llm.client.shutil.which",
+                            lambda name: fake_binary)
+        assert find_claude_cli("http://127.0.0.1:11434") == fake_binary
+
+    def test_real_path_still_wins(self, fake_binary):
+        assert find_claude_cli(fake_binary) == fake_binary

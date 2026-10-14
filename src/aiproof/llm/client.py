@@ -93,7 +93,10 @@ def openai_models_url(endpoint: str) -> str:
 
 def find_claude_cli(configured: str = "") -> "str | None":
     """Path to the Claude Code CLI, or None when it isn't installed."""
-    if configured:
+    # A URL here means the field was carried over from an HTTP provider;
+    # treat it as "not configured" rather than failing with a confusing
+    # "CLI not found" for a path that was never a path.
+    if configured and not re.match(r"^[a-z][a-z0-9+.-]*://", configured):
         path = os.path.expanduser(configured)
         return path if os.path.isfile(path) and os.access(path, os.X_OK) else None
     found = shutil.which("claude")

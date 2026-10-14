@@ -42,7 +42,8 @@ def test_happy_path(orch, fake_clipboard, fake_keystroke, fake_llm, notifier,
     assert o.run_clipboard_flow() is True
     assert ("set_text", "the text") in fake_clipboard.calls
     assert fake_keystroke.calls == []
-    assert notifier.summaries == ["Proofreading…", "Corrected in 0.3s"]
+    # progress banner is opt-in (progress_notification, default off)
+    assert notifier.summaries == ["Corrected in 0.3s"]
     assert "press Ctrl+V to paste" in notifier.last[1]
     assert "Automatic paste unavailable" not in notifier.last[1]
     assert o.states == ["busy", "idle"]

@@ -39,6 +39,9 @@ DEFAULTS = {
     # How long Ollama keeps the model loaded after a request (its own default
     # evicts after 5 minutes -> 9-40s cold reload on the next proofread).
     "ollama_keep_alive": "30m",
+    # Pop a "Proofreading..." banner while a correction runs. Off by default:
+    # the spinning tray icon already shows it, without stealing attention.
+    "progress_notification": False,
     # "rewrite": the model returns the whole corrected text. "edits": it lists
     # only "wrong => right" pairs that aiproof applies itself — far fewer
     # output tokens on small local models, and the layout cannot break.

@@ -9,7 +9,7 @@ import logging
 import gi
 
 gi.require_version("Gtk", "3.0")
-from gi.repository import Gtk
+from gi.repository import GLib, Gtk
 
 log = logging.getLogger(__name__)
 
@@ -26,10 +26,16 @@ def icon_dir() -> str:
     return str(importlib.resources.files("aiproof") / "data" / "icons")
 
 
+BUSY_FRAMES = [f"aiproof-busy-{i}-symbolic" for i in range(1, 9)]
+SPIN_INTERVAL_MS = 125   # 8 frames -> one rotation per second
+
+
 class Tray:
     def __init__(self, daemon):
         self.daemon = daemon
         self.indicator = None
+        self._spin_id = None
+        self._spin_frame = 0
         self._enabled_item = None
         if not HAVE_APPINDICATOR:
             return
@@ -44,9 +50,37 @@ class Tray:
         self.indicator.set_menu(self._build_menu())
 
     def set_state(self, state: str) -> None:
-        """state: idle | busy | error | disabled"""
-        if self.indicator:
-            self.indicator.set_icon_full(f"aiproof-{state}-symbolic", state)
+        """state: idle | busy | error | disabled
+
+        Busy spins the tray icon instead of raising a notification banner:
+        a proofread takes a couple of seconds, and a popup for every one of
+        them is more interruption than information."""
+        if not self.indicator:
+            return
+        self._stop_spinner()
+        if state == "busy":
+            self._start_spinner()
+            return
+        self.indicator.set_icon_full(f"aiproof-{state}-symbolic", state)
+
+    def _start_spinner(self) -> None:
+        self._spin_frame = 0
+
+        def tick() -> bool:
+            if self._spin_id is None:
+                return False
+            name = BUSY_FRAMES[self._spin_frame % len(BUSY_FRAMES)]
+            self.indicator.set_icon_full(name, "working")
+            self._spin_frame += 1
+            return True
+
+        tick()
+        self._spin_id = GLib.timeout_add(SPIN_INTERVAL_MS, tick)
+
+    def _stop_spinner(self) -> None:
+        if getattr(self, "_spin_id", None) is not None:
+            GLib.source_remove(self._spin_id)
+            self._spin_id = None
 
     def sync_enabled(self, enabled: bool) -> None:
         if self._enabled_item:

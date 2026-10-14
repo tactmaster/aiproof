@@ -120,11 +120,12 @@ class Orchestrator:
         # Content only at DEBUG (run `aiproof -v daemon` to diagnose capture
         # mismatches without leaking selections into the default journal).
         log.debug("captured content: %r", text[:120])
-        self.notifier.notify(
-            "Proofreading…",
-            f"{len(text):,} characters with "
-            f"{self.cfg['provider']}/{self.cfg['model']}",
-        )
+        if self.cfg.get("progress_notification"):
+            self.notifier.notify(
+                "Proofreading…",
+                f"{len(text):,} characters with "
+                f"{self.cfg['provider']}/{self.cfg['model']}",
+            )
 
         def on_fallback(error):
             fb = self.cfg.get("fallback") or {}

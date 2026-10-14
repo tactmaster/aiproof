@@ -33,6 +33,7 @@ class SettingsWindow(Adw.PreferencesWindow):
         self.add(self._build_setup_page())
         self._load_values()
         self._loading = False
+        self.connect("close-request", self._flush_api_key)
 
         if page == "behavior":
             self.set_visible_page_name("behavior")
@@ -75,8 +76,12 @@ class SettingsWindow(Adw.PreferencesWindow):
         self.model_row.add_suffix(list_btn)
         group.add(self.model_row)
 
-        self.api_key_row = Adw.PasswordEntryRow(title="API key", show_apply_button=True)
+        self.api_key_row = Adw.PasswordEntryRow(
+            title="API key (press Enter to save)", show_apply_button=True)
         self.api_key_row.connect("apply", self._on_api_key_apply)
+        focus = Gtk.EventControllerFocus()
+        focus.connect("leave", self._flush_api_key)
+        self.api_key_row.add_controller(focus)
         group.add(self.api_key_row)
 
         # Whether the selected provider keeps text on this machine, and for
@@ -101,7 +106,7 @@ class SettingsWindow(Adw.PreferencesWindow):
                 [PROVIDERS[pid]["display_name"] for pid in PROVIDER_IDS]
             ),
         )
-        self.fb_provider_row.connect("notify::selected", self._save_fallback)
+        self.fb_provider_row.connect("notify::selected", self._on_fb_provider_changed)
         fb_group.add(self.fb_provider_row)
 
         self.fb_endpoint_row = Adw.EntryRow(title="Fallback endpoint URL")
@@ -195,6 +200,17 @@ class SettingsWindow(Adw.PreferencesWindow):
             model=self.model_row.get_text().strip(),
         )
 
+    def _flush_api_key(self, *_args) -> bool:
+        """Commit a typed-but-not-applied key. Returns False so it can also
+        serve as a ::close-request handler (False = let the window close)."""
+        if self._loading:
+            return False
+        pid = PROVIDER_IDS[self.provider_row.get_selected()]
+        typed = self.api_key_row.get_text().strip()
+        if typed and typed != (secrets.get_api_key(pid) or ""):
+            self._on_api_key_apply(self.api_key_row)
+        return False
+
     def _on_api_key_apply(self, row) -> None:
         pid = PROVIDER_IDS[self.provider_row.get_selected()]
         key = row.get_text().strip()
@@ -204,6 +220,19 @@ class SettingsWindow(Adw.PreferencesWindow):
         else:
             config.update(api_key_plaintext=key or None)
             self._flash(row, "Keyring unavailable — saved as plain text")
+
+    def _on_fb_provider_changed(self, *_args) -> None:
+        """Repopulate the fallback endpoint/model with the new provider's
+        defaults. Without this the fields kept the previous provider's values
+        and produced impossible pairings (claude-cli with an Ollama URL)."""
+        if self._loading:
+            return
+        preset = PROVIDERS[PROVIDER_IDS[self.fb_provider_row.get_selected()]]
+        self._loading = True
+        self.fb_endpoint_row.set_text(preset["endpoint"])
+        self.fb_model_row.set_text(preset["model"])
+        self._loading = False
+        self._save_fallback()
 
     def _save_fallback(self, *_args) -> None:
         if self._loading:

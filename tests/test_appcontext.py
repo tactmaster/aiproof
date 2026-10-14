@@ -207,3 +207,16 @@ class TestCasualWiringInClient:
             lambda orig, cand, q: (cand, "ok"))
         out, _ = client.proofread("yeah thats fine")
         assert out == "Yeah that's fine."
+
+
+class TestFallbackProviderFieldsReset:
+    """Changing the fallback provider must bring its own endpoint/model, or
+    the stale pair silently produces an unusable fallback."""
+
+    def test_preset_pairs_are_self_consistent(self):
+        from aiproof.llm.providers import PROVIDERS
+        for pid, preset in PROVIDERS.items():
+            if preset["format"] == "claude_cli":
+                assert preset["endpoint"] == "", pid
+            elif preset["format"] == "ollama":
+                assert preset["endpoint"].startswith("http"), pid

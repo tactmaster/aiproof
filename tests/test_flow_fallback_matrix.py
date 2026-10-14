@@ -258,11 +258,10 @@ def test_full_chain_failover(monkeypatch, notifier, fake_clipboard, no_sleep,
 
     assert o.run_clipboard_flow() is True
     assert notifier.summaries == [
-        "Proofreading…",
         "Primary provider unavailable — trying fallback…",
         "Corrected in 0.1s — via fallback local-model",
     ]
-    assert "dead host" in notifier.notes[1][1]
+    assert "dead host" in notifier.notes[0][1]
     assert (o.last_path, o.used_fallback) == ("ok", True)
     assert "primary provider failed (dead host)" in caplog.text
 

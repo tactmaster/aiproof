@@ -78,7 +78,8 @@ def test_happy_path(orch, fake_clipboard, fake_keystroke, fake_llm, notifier,
     assert fake_clipboard.calls[-1] == ("restore", fake_clipboard.saved_state)
     assert no_sleep == [0.2, 0.05, 0.1, 0.5]  # restore_delay_ms default 500
     assert fake_llm.calls == ["teh text"]
-    assert notifier.summaries == ["Proofreading…", "Text corrected"]
+    # progress banner is opt-in (progress_notification, default off)
+    assert notifier.summaries == ["Text corrected"]
     assert "Replaced in place in 0.3s (ollama/phi3.5:latest)." == notifier.last[1]
     assert o.states == ["busy", "idle"]
     assert "captured selection: 8 chars, 1 lines, 0 blank lines" in caplog.text
@@ -276,3 +277,21 @@ def test_history_off_by_default(orch, fake_clipboard, fake_llm, tmp_path,
 
     assert o.run_paste_flow() is True
     assert not history.history_path().exists()
+
+
+def test_progress_banner_is_opt_in(orch, fake_clipboard, fake_llm, notifier):
+    """The spinning tray icon shows work in progress; the banner is only for
+    users who explicitly want it back."""
+    fake_clipboard.poll_results.append("teh text")
+    o = orch(progress_notification=True)
+    assert o.run_paste_flow() is True
+    assert notifier.summaries == ["Proofreading…", "Text corrected"]
+
+
+def test_tray_spins_while_busy(orch, fake_clipboard, fake_llm):
+    """busy -> idle must still be reported, since the tray drives the
+    spinner off those transitions."""
+    fake_clipboard.poll_results.append("teh text")
+    o = orch()
+    assert o.run_paste_flow() is True
+    assert o.states == ["busy", "idle"]
